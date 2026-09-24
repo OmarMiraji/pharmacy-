@@ -1,0 +1,41 @@
+# Build a Windows zip whenever you push a version tag like v1.0.1
+name: Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Zip installer folder
+        shell: pwsh
+        run: |
+          $src = "build\windows\x64\runner\Release"
+          if (-not (Test-Path $src)) { throw "Windows build output was not found." }
+          Compress-Archive -Path "$src\*" -DestinationPath "phyimacy-windows.zip" -Force
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: phyimacy-windows.zip
+          generate_release_notes: true
+          make_latest: true

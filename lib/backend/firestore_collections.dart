@@ -1,0 +1,19 @@
+abstract final class FirestoreCollections {
+  static const users = 'users';
+  static const pharmacies = 'pharmacies';
+  static const medicines = 'medicines';
+  static const medicineBatches = 'medicine_batches';
+  static const categories = 'categories';
+  static const suppliers = 'suppliers';
+  static const purchases = 'purchases';
+  static const purchaseItems = 'items';
+  static const sales = 'sales';
+  static const saleItems = 'items';
+  static const stockMovements = 'stock_movements';
+  static const customers = 'customers';
+  static const expenses = 'expenses';
+  static const settings = 'settings';
+  static const subscriptions = 'subscriptions';
+  static const subscriptionCodes = 'subscription_codes';
+  static const appReleases = 'app_releases';
+}

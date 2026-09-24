@@ -1,0 +1,1 @@
+{"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"phyimacy-management-system","configurations":{"windows":"1:433141635482:web:d24507df5629fc30c5c223"}}}}}}
