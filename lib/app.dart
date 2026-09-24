@@ -7,7 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'backend/app_update_service.dart';
 import 'backend/auth_service.dart';
 import 'backend/firestore_collections.dart';
@@ -30,6 +29,7 @@ import 'backend/tenant_context.dart';
 import 'screens/subscription_admin_screen.dart';
 import 'screens/pharmacy_workspace_settings_screen.dart';
 import 'screens/app_update_screen.dart';
+import 'screens/apply_app_update.dart';
 import 'screens/accounts_admin_screen.dart';
 
 class PhyimacyApp extends StatelessWidget {
@@ -538,13 +538,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.system_update_alt_rounded, color: Color(0xff0f766e)),
                       title: Text('New Phyimacy ${_appUpdate!.latest!.version} is available'),
-                      subtitle: const Text('Download and replace this app, then open it again.'),
+                      subtitle: const Text('Tap Update. Phyimacy installs it and reopens by itself.'),
                       trailing: FilledButton(
-                        onPressed: () {
-                          final url = Uri.tryParse(_appUpdate!.latest!.downloadUrl);
-                          if (url != null) launchUrl(url, mode: LaunchMode.externalApplication);
-                        },
-                        child: const Text('Download'),
+                        onPressed: _appUpdate!.latest!.canAutoInstall
+                            ? () => applyPhyimacyUpdate(context, _appUpdate!.latest!)
+                            : null,
+                        child: const Text('Update now'),
                       ),
                     ),
                   ),

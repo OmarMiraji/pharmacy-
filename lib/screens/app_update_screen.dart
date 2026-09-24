@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../backend/app_update_service.dart';
 import '../backend/user_profile.dart';
+import 'apply_app_update.dart';
 
 class AppUpdateScreen extends StatefulWidget {
   const AppUpdateScreen({required this.profile, super.key});
@@ -63,18 +63,6 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
     }
   }
 
-  Future<void> _openDownload(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Download link is not valid.')));
-      return;
-    }
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the download link.')));
-    }
-  }
-
   Future<void> _publish() async {
     setState(() => _busy = true);
     try {
@@ -87,7 +75,7 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Update published. Every shop will see it when they check for updates.')),
+        const SnackBar(content: Text('GitHub repo saved. Pharmacies will install verified releases in-app.')),
       );
       await _refresh();
     } catch (error) {
@@ -110,7 +98,7 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
           const Text('App updates', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
           const SizedBox(height: 8),
           const Text(
-            'Check GitHub for the latest Phyimacy installer. Super Admin connects the GitHub repo once; after each tagged release, every pharmacy sees it with Check for update.',
+            'One button installs the update. Phyimacy downloads the official GitHub zip, checks SHA-256, replaces this app, and reopens. Nobody unzips files by hand.',
             style: TextStyle(color: Color(0xff68807d)),
           ),
           const SizedBox(height: 18),
@@ -139,10 +127,14 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.system_update_alt_rounded, color: Color(0xff0f766e)),
                   title: Text('New version ${latest.version} is available'),
-                  subtitle: Text(latest.notes.isEmpty ? 'Download and install this version on this computer.' : latest.notes),
+                  subtitle: Text(
+                    latest.canAutoInstall
+                        ? (latest.notes.isEmpty ? 'Install now. The app will close and reopen by itself.' : latest.notes)
+                        : 'This release is not a verified GitHub zip yet.',
+                  ),
                   trailing: FilledButton(
-                    onPressed: () => _openDownload(latest.downloadUrl),
-                    child: const Text('Download'),
+                    onPressed: latest.canAutoInstall ? () => applyPhyimacyUpdate(context, latest) : null,
+                    child: const Text('Update now'),
                   ),
                 ),
               )
@@ -157,7 +149,7 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
             const Text('Publish / connect GitHub', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
             const SizedBox(height: 8),
             const Text(
-              'Step 1: put the project on GitHub. Step 2: save owner/repo here, for example yourname/phyimacy. Step 3: when you finish an update, bump pubspec version, commit, tag v1.0.1, and push the tag. GitHub builds the Windows zip and pharmacies download it from Check for update.',
+              'Save owner/repo once. After each tag (v1.0.2), GitHub builds the zip. Pharmacies tap Update now — no browser unzip.',
               style: TextStyle(color: Color(0xff68807d)),
             ),
             const SizedBox(height: 12),
