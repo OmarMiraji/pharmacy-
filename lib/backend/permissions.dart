@@ -8,6 +8,7 @@ abstract final class AppPermissions {
   static const inventoryAdjust = 'inventory.adjust';
   static const salesView = 'sales.view';
   static const salesCreate = 'sales.create';
+  static const salesDiscount = 'sales.discount';
   static const salesRefund = 'sales.refund';
   static const purchasesView = 'purchases.view';
   static const purchasesCreate = 'purchases.create';
@@ -39,6 +40,7 @@ abstract final class AppPermissions {
     inventoryAdjust,
     salesView,
     salesCreate,
+    salesDiscount,
     salesRefund,
     purchasesView,
     purchasesCreate,
@@ -81,6 +83,7 @@ abstract final class AppPermissions {
       inventoryAdjust: true,
       salesView: true,
       salesCreate: true,
+      salesDiscount: true,
       salesRefund: true,
       purchasesView: true,
       purchasesCreate: true,
@@ -111,6 +114,7 @@ abstract final class AppPermissions {
       inventoryAdjust: true,
       salesView: true,
       salesCreate: true,
+      salesDiscount: true,
       salesRefund: true,
       purchasesView: true,
       purchasesCreate: true,
@@ -131,6 +135,7 @@ abstract final class AppPermissions {
       inventoryAdjust: true,
       salesView: true,
       salesCreate: true,
+      salesDiscount: true,
       purchasesView: true,
       purchasesReceive: true,
       suppliersManage: true,
@@ -162,16 +167,91 @@ abstract final class AppPermissions {
 
   static Map<String, bool> resolvedPermissions(String role, [Map<String, bool>? stored]) {
     final defaults = Map<String, bool>.from(roleDefaults[role] ?? const <String, bool>{});
+    for (final permission in pharmacyPermissions) {
+      defaults.putIfAbsent(permission, () => false);
+    }
     if (role == 'admin') {
       for (final permission in pharmacyPermissions) {
         defaults[permission] = true;
       }
     }
     stored?.forEach((key, value) {
-      if (value == true && !superAdminOnlyPermissions.contains(key)) {
-        defaults[key] = true;
+      if (superAdminOnlyPermissions.contains(key) && role != 'super_admin') {
+        return;
       }
+      defaults[key] = value == true;
     });
     return defaults;
   }
+
+  static List<String> shopTickList({required bool includeDeveloper}) {
+    if (includeDeveloper) return all.toList();
+    return pharmacyPermissions.toList();
+  }
+
+  static String labelEn(String permission) => switch (permission) {
+        dashboardView => 'See Overview',
+        medicinesView => 'See medicines catalogue',
+        medicinesCreate => 'Add / import medicines',
+        medicinesUpdate => 'Edit medicines (price, pack, type)',
+        medicinesDelete => 'Delete medicines',
+        inventoryView => 'See stock / batches',
+        inventoryAdjust => 'Adjust stock and write off expired',
+        salesView => 'See Sales (POS)',
+        salesCreate => 'Complete a sale',
+        salesDiscount => 'Apply a sale discount',
+        salesRefund => 'Refund a sale',
+        purchasesView => 'See purchases',
+        purchasesCreate => 'Record a purchase',
+        purchasesReceive => 'Receive incoming stock',
+        suppliersManage => 'Add / edit suppliers',
+        customersManage => 'Manage walk-in customers',
+        expensesManage => 'Record shop expenses',
+        reportsView => 'See reports',
+        usersManage => 'Manage staff logins',
+        settingsManage => 'Shop settings, printer, backup',
+        subscriptionManage => 'Manage licenses',
+        subscriptionActivate => 'Activate a license',
+        subscriptionSuspend => 'Suspend a license',
+        subscriptionExtend => 'Extend a license',
+        paymentVerify => 'Verify payments',
+        licenseManage => 'Edit license records',
+        licenseReset => 'Reset a license',
+        appReleaseManage => 'Manage app releases',
+        appUpdatePublish => 'Publish app updates',
+        _ => permission,
+      };
+
+  static String labelSw(String permission) => switch (permission) {
+        dashboardView => 'Ona Overview',
+        medicinesView => 'Ona orodha ya dawa',
+        medicinesCreate => 'Ongeza / import dawa',
+        medicinesUpdate => 'Hariri dawa (bei, pack, aina)',
+        medicinesDelete => 'Futa dawa',
+        inventoryView => 'Ona stock / batches',
+        inventoryAdjust => 'Badilisha stock na toa zilizoisha',
+        salesView => 'Ona Sales (POS)',
+        salesCreate => 'Kamilisha mauzo',
+        salesDiscount => 'Weka punguzo kwenye mauzo',
+        salesRefund => 'Rudisha mauzo (refund)',
+        purchasesView => 'Ona manunuzi',
+        purchasesCreate => 'Rekodi ununuzi',
+        purchasesReceive => 'Pokea stock inayoingia',
+        suppliersManage => 'Ongeza / hariri wasambazaji',
+        customersManage => 'Simamia wateja',
+        expensesManage => 'Rekodi matumizi ya duka',
+        reportsView => 'Ona ripoti',
+        usersManage => 'Simamia login za staff',
+        settingsManage => 'Mipangilio, printa, backup',
+        subscriptionManage => 'Simamia leseni',
+        subscriptionActivate => 'Activate leseni',
+        subscriptionSuspend => 'Sitisha leseni',
+        subscriptionExtend => 'Ongeza muda wa leseni',
+        paymentVerify => 'Thibitisha malipo',
+        licenseManage => 'Hariri leseni',
+        licenseReset => 'Reset leseni',
+        appReleaseManage => 'Simamia matoleo ya app',
+        appUpdatePublish => 'Chapisha update',
+        _ => permission,
+      };
 }

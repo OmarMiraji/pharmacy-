@@ -34,23 +34,35 @@ class PharmacyRecord {
   final String? address;
 
   factory PharmacyRecord.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? <String, dynamic>{};
-    return PharmacyRecord(
-      id: doc.id,
-      name: _string(data['name']) ?? 'Pharmacy',
-      status: _string(data['status']) ?? 'trial',
-      plan: _string(data['plan']) ?? 'trial',
-      isUnlocked: data['isUnlocked'] == true,
-      isTrial: data['isTrial'] == true || _string(data['plan']) == 'trial',
-      ownerEmail: _string(data['ownerEmail']),
-      ownerUserId: _string(data['ownerUserId']),
-      startsAt: _date(data['startsAt']),
-      expiresAt: _date(data['expiresAt']),
-      trialEndsAt: _date(data['trialEndsAt']),
-      note: _string(data['note']),
-      phone: _string(data['phone']),
-      address: _string(data['address']),
-    );
+    try {
+      final data = doc.data() ?? <String, dynamic>{};
+      final plan = _string(data['plan']) ?? 'trial';
+      return PharmacyRecord(
+        id: doc.id,
+        name: (_string(data['name']) ?? 'Pharmacy').trim().isEmpty ? 'Pharmacy' : (_string(data['name']) ?? 'Pharmacy'),
+        status: _string(data['status']) ?? 'trial',
+        plan: plan,
+        isUnlocked: data['isUnlocked'] == true,
+        isTrial: data['isTrial'] == true || plan == 'trial',
+        ownerEmail: _string(data['ownerEmail']),
+        ownerUserId: _string(data['ownerUserId']),
+        startsAt: _date(data['startsAt']),
+        expiresAt: _date(data['expiresAt']),
+        trialEndsAt: _date(data['trialEndsAt']),
+        note: _string(data['note']),
+        phone: _string(data['phone']),
+        address: _string(data['address']),
+      );
+    } catch (_) {
+      return PharmacyRecord(
+        id: doc.id,
+        name: 'Pharmacy',
+        status: 'trial',
+        plan: 'trial',
+        isUnlocked: false,
+        isTrial: true,
+      );
+    }
   }
 
   static String? _string(Object? value) {
@@ -62,6 +74,7 @@ class PharmacyRecord {
   static DateTime? _date(Object? value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
     return null;
   }
 }

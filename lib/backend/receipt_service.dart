@@ -46,7 +46,7 @@ class ReceiptSummary {
   List<String> get lines {
     final formattedDate = '${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.year} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
     final list = <String>[
-      'PHYIMACY',
+      'PHARMSPECIO',
       'Receipt: $receiptNumber',
       'Date: $formattedDate',
       'Seller: $soldBy',
@@ -57,7 +57,7 @@ class ReceiptSummary {
       'Subtotal: TZS $subtotalMinor',
       'Discount: TZS $discountMinor',
       'Total: TZS $totalMinor',
-      'Thank you for shopping with PHYIMACY',
+      'Thank you for shopping with PHARMSPECIO',
     ];
     return list;
   }
@@ -94,7 +94,7 @@ class ReceiptService {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('PHYIMACY', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+              pw.Text('PHARMSPECIO', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
               pw.SizedBox(height: 8),
               pw.Text('Receipt: ${receipt.receiptNumber}'),
               pw.Text('Date: ${receipt.createdAt.day.toString().padLeft(2, '0')}/${receipt.createdAt.month.toString().padLeft(2, '0')}/${receipt.createdAt.year} ${receipt.createdAt.hour.toString().padLeft(2, '0')}:${receipt.createdAt.minute.toString().padLeft(2, '0')}'),
@@ -134,7 +134,7 @@ class ReceiptService {
                 ],
               ),
               pw.SizedBox(height: 10),
-              pw.Text('Thank you for shopping with PHYIMACY'),
+              pw.Text('Thank you for shopping with PHARMSPECIO'),
             ],
           );
         },

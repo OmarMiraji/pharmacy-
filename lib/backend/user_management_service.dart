@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'auth_account_service.dart';
@@ -23,13 +24,19 @@ class UserManagementService {
     } else {
       query = tenant.scoped(_firestore.collection(FirestoreCollections.users));
     }
-    return query.snapshots().map(
-          (snapshot) => snapshot.docs.map(UserProfile.fromFirestore).where((user) {
-            if (tenant.isSuperAdmin) return true;
-            return user.role != 'super_admin';
-          }).toList()
-            ..sort((a, b) => a.displayName.compareTo(b.displayName)),
-        );
+    return query.snapshots().map((snapshot) {
+      final users = <UserProfile>[];
+      for (final doc in snapshot.docs) {
+        try {
+          final user = UserProfile.fromFirestore(doc);
+          if (tenant.isSuperAdmin || user.role != 'super_admin') {
+            users.add(user);
+          }
+        } catch (_) {}
+      }
+      users.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+      return users;
+    });
   }
 
   Future<void> updateAccess({
@@ -44,7 +51,7 @@ class UserManagementService {
     }
     final actorId = FirebaseAuth.instance.currentUser?.uid;
     if (!TenantContext.instance.isSuperAdmin && actorId != null && actorId == userId) {
-      throw StateError('You cannot change your own access. Ask Super Admin.');
+      throw StateError('You cannot change your own access. Ask your administrator.');
     }
     final resolved = AppPermissions.resolvedPermissions(role, permissions);
     return _firestore.collection(FirestoreCollections.users).doc(userId).update({
@@ -52,8 +59,6 @@ class UserManagementService {
       'permissions': resolved,
       'isActive': isActive,
       'updatedAt': FieldValue.serverTimestamp(),
-      if ((TenantContext.instance.pharmacyId ?? '').trim().isNotEmpty)
-        'pharmacyId': TenantContext.instance.pharmacyId,
     });
   }
 
@@ -74,24 +79,43 @@ class UserManagementService {
     }
     final actorId = FirebaseAuth.instance.currentUser?.uid;
     if (!TenantContext.instance.isSuperAdmin && actorId != null && actorId == userId) {
-      throw StateError('You cannot change your own access. Ask Super Admin.');
+      throw StateError('You cannot change your own access. Ask your administrator.');
     }
     if (displayName.trim().isEmpty || email.trim().isEmpty) {
       throw ArgumentError('Name and email are required.');
     }
-    final tenantId = (pharmacyId ?? TenantContext.instance.pharmacyId ?? '').trim();
+    final tenant = TenantContext.instance;
+    var tenantId = (pharmacyId ?? tenant.pharmacyId ?? '').trim();
+    if (!tenant.isSuperAdmin) {
+      tenantId = (tenant.pharmacyId ?? tenantId).trim();
+      if (tenantId.isEmpty) {
+        throw StateError('Your account is not linked to a pharmacy, so staff cannot be changed.');
+      }
+    }
     final resolved = AppPermissions.resolvedPermissions(role, permissions);
-    return _firestore.collection(FirestoreCollections.users).doc(userId).set({
-      'displayName': displayName.trim(),
-      'email': email.trim(),
-      'phone': (phone ?? '').trim(),
-      'role': role,
-      'permissions': resolved,
-      'isActive': isActive,
-      if ((employeeCode ?? '').trim().isNotEmpty) 'employeeCode': employeeCode!.trim(),
-      if (role != 'super_admin' && tenantId.isNotEmpty) 'pharmacyId': tenantId,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final ref = _firestore.collection(FirestoreCollections.users).doc(userId);
+    return _firestore.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      final existing = snap.data() ?? const <String, dynamic>{};
+      final existingShop = (existing['pharmacyId'] as String?)?.trim() ?? '';
+      final shopId = tenant.isSuperAdmin
+          ? tenantId
+          : (existingShop.isNotEmpty ? existingShop : tenantId);
+      if (!tenant.isSuperAdmin && existingShop.isNotEmpty && shopId != tenantId) {
+        throw StateError('This login belongs to another pharmacy.');
+      }
+      tx.set(ref, {
+        'displayName': displayName.trim(),
+        'email': email.trim(),
+        'phone': (phone ?? '').trim(),
+        'role': role,
+        'permissions': resolved,
+        'isActive': isActive,
+        if ((employeeCode ?? '').trim().isNotEmpty) 'employeeCode': employeeCode!.trim(),
+        if (role != 'super_admin' && shopId.isNotEmpty) 'pharmacyId': shopId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
   }
 
   Future<String> createLoginAndProfile({
@@ -102,6 +126,8 @@ class UserManagementService {
     required Map<String, bool> permissions,
     required bool isActive,
     String? pharmacyId,
+    String? phone,
+    String? employeeCode,
   }) async {
     TenantContext.instance.assertWritable();
     final shopId = (pharmacyId ?? TenantContext.instance.pharmacyId ?? '').trim();
@@ -128,7 +154,7 @@ class UserManagementService {
         '$mail is already a staff login for this pharmacy. They can sign in with their existing password.',
       );
     }
-    final uid = await AuthAccountService().createAuthUser(email: mail, password: password);
+    final uid = await AuthAccountService().createAuthUser(email: mail, password: password, role: role);
     await createProfile(
       userId: uid,
       displayName: displayName,
@@ -137,6 +163,8 @@ class UserManagementService {
       permissions: permissions,
       isActive: isActive,
       pharmacyId: shopId,
+      phone: phone,
+      employeeCode: employeeCode,
     );
     return uid;
   }
@@ -149,6 +177,8 @@ class UserManagementService {
     required Map<String, bool> permissions,
     required bool isActive,
     String? pharmacyId,
+    String? phone,
+    String? employeeCode,
   }) async {
     TenantContext.instance.assertWritable();
     if (userId.trim().isEmpty || displayName.trim().isEmpty || email.trim().isEmpty) {
@@ -173,6 +203,8 @@ class UserManagementService {
     await _firestore.collection(FirestoreCollections.users).doc(userId.trim()).set({
       'displayName': displayName.trim(),
       'email': email.trim(),
+      'phone': (phone ?? '').trim(),
+      'employeeCode': (employeeCode ?? '').trim(),
       'role': role,
       'permissions': AppPermissions.resolvedPermissions(role, permissions),
       'isActive': isActive,
@@ -206,5 +238,29 @@ class UserManagementService {
       deleted++;
     }
     return deleted;
+  }
+
+  Future<void> setLoginPassword({required String userId, required String password}) async {
+    TenantContext.instance.assertWritable();
+    final next = password.trim();
+    if (userId.trim().isEmpty) throw ArgumentError('User is required.');
+    if (next.length < 6) throw ArgumentError('Password must be at least 6 characters.');
+    final actor = FirebaseAuth.instance.currentUser?.uid;
+    if (actor != null && actor == userId) {
+      throw StateError('Change your own password from Settings or the lock icon.');
+    }
+    try {
+      await FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('setUserPassword').call(<String, dynamic>{
+        'uid': userId,
+        'password': next,
+      });
+    } on FirebaseFunctionsException catch (error) {
+      if (error.code == 'not-found' || error.code == 'unavailable' || error.code == 'unimplemented') {
+        throw StateError(
+          'Direct password set needs Cloud Functions (setUserPassword). Use Send reset email until that is deployed.',
+        );
+      }
+      throw StateError(error.message ?? 'Could not set that login password.');
+    }
   }
 }

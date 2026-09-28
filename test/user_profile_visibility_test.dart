@@ -62,5 +62,23 @@ void main() {
       expect(admin.can(AppPermissions.licenseManage), isFalse);
       expect(admin.can(AppPermissions.appUpdatePublish), isFalse);
     });
+
+    test('unchecked stored permission is not restored from role defaults', () {
+      final pharmacist = UserProfile(
+        id: 'pharm-1',
+        employeeCode: 'EMP-3',
+        displayName: 'Pharmacist',
+        email: 'pharmacist@shop.com',
+        role: 'pharmacist',
+        permissions: AppPermissions.resolvedPermissions('pharmacist', {
+          AppPermissions.medicinesUpdate: false,
+        }),
+        isActive: true,
+      );
+
+      expect(pharmacist.can(AppPermissions.medicinesView), isTrue);
+      expect(pharmacist.can(AppPermissions.medicinesUpdate), isFalse);
+      expect(pharmacist.can(AppPermissions.salesDiscount), isTrue);
+    });
   });
 }

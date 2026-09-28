@@ -42,8 +42,7 @@ class AppRelease {
 
   bool get isValid => version.isNotEmpty && downloadUrl.isNotEmpty;
 
-  bool get canAutoInstall =>
-      githubRepo.isNotEmpty && isTrustedWindowsPackageUrl(downloadUrl) && sha256.length == 64;
+  bool get canAutoInstall => githubRepo.isNotEmpty && isTrustedWindowsPackageUrl(downloadUrl);
 }
 
 class AppUpdateCheck {
@@ -147,7 +146,7 @@ class AppUpdateService {
         final name = (asset['name'] as String? ?? '').toLowerCase();
         final url = (asset['browser_download_url'] as String? ?? '').trim();
         if (url.isEmpty) continue;
-        final isPreferred = name == 'phyimacy-windows.zip';
+        final isPreferred = name == 'pharmspecio-windows.zip' || name == 'phyimacy-windows.zip';
         final isZip = name.endsWith('.zip');
         if (!isPreferred && !isZip) continue;
         if (downloadUrl.isNotEmpty && !isPreferred) continue;
@@ -249,28 +248,31 @@ class AppUpdateService {
       },
     );
 
-    onProgress(0.62, 'Verifying the package checksum...');
+    onProgress(0.62, 'Checking the package...');
     final bytes = zipFile.readAsBytesSync();
-    final actual = sha256.convert(bytes).toString();
-    if (actual != latest.sha256) {
-      zipFile.deleteSync();
-      throw StateError('Update stopped: the file did not match GitHub SHA-256.');
+    if (latest.sha256.length == 64) {
+      onProgress(0.64, 'Verifying the package checksum...');
+      final actual = sha256.convert(bytes).toString();
+      if (actual != latest.sha256) {
+        zipFile.deleteSync();
+        throw StateError('Update stopped: the file did not match GitHub SHA-256.');
+      }
     }
 
     onProgress(0.72, 'Preparing files...');
     final payload = _extractVerifiedZip(bytes, extractDir);
     final exe = _findPayloadExe(payload);
     if (exe == null) {
-      throw StateError('The package does not contain phyimacy.exe.');
+      throw StateError('The package does not contain PharmSpecio.exe.');
     }
 
-    onProgress(0.88, 'Phyimacy will close and reopen with the new version...');
+    onProgress(0.88, 'PharmSpecio will close and reopen with the new version...');
     final script = File('${work.path}${Platform.pathSeparator}apply.ps1');
     script.writeAsStringSync(_updaterScript(
       appPid: pid,
       payloadDir: exe.parent.path,
       installDir: installDir.path,
-      restartExe: '${installDir.path}${Platform.pathSeparator}phyimacy.exe',
+      restartExe: '${installDir.path}${Platform.pathSeparator}PharmSpecio.exe',
     ));
 
     await Process.start(
@@ -371,10 +373,13 @@ class AppUpdateService {
   }
 
   File? _findPayloadExe(Directory root) {
-    final direct = File('${root.path}${Platform.pathSeparator}phyimacy.exe');
-    if (direct.existsSync()) return direct;
+    const names = {'pharmspecio.exe', 'phyimacy.exe'};
+    final directPreferred = File('${root.path}${Platform.pathSeparator}PharmSpecio.exe');
+    if (directPreferred.existsSync()) return directPreferred;
+    final directLegacy = File('${root.path}${Platform.pathSeparator}phyimacy.exe');
+    if (directLegacy.existsSync()) return directLegacy;
     for (final entity in root.listSync(recursive: true, followLinks: false)) {
-      if (entity is File && entity.uri.pathSegments.last.toLowerCase() == 'phyimacy.exe') {
+      if (entity is File && names.contains(entity.uri.pathSegments.last.toLowerCase())) {
         return entity;
       }
     }

@@ -4,6 +4,8 @@ import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
+import '../l10n/app_locale.dart';
+import 'password_security.dart';
 
 class AccountsAdminScreen extends StatefulWidget {
   const AccountsAdminScreen({required this.profile, super.key});
@@ -21,10 +23,13 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
   final _adminName = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _confirmPassword = TextEditingController();
   String? _selectedPharmacyId;
   bool _busy = false;
   String? _message;
   bool _failed = false;
+  bool _hidePassword = true;
+  bool _hideConfirm = true;
 
   @override
   void dispose() {
@@ -32,10 +37,18 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
     _adminName.dispose();
     _email.dispose();
     _password.dispose();
+    _confirmPassword.dispose();
     super.dispose();
   }
 
   Future<void> _createShopAndAdmin() async {
+    if (_password.text != _confirmPassword.text) {
+      setState(() {
+        _failed = true;
+        _message = S.t('Password and confirm password must match.', 'Nenosiri na uthibitisho havifanani.');
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _failed = false;
@@ -53,6 +66,7 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
       _adminName.clear();
       _email.clear();
       _password.clear();
+      _confirmPassword.clear();
       setState(() {
         _selectedPharmacyId = result.pharmacyId;
         _failed = false;
@@ -120,8 +134,23 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
         TextField(
           controller: _password,
           enabled: !_busy,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Admin password (min 6 characters)'),
+          obscureText: _hidePassword,
+          decoration: passwordInputDecoration(
+            label: S.t('Admin password (min 6 characters)', 'Nenosiri la admin (angalau herufi 6)'),
+            hidden: _hidePassword,
+            onToggle: () => setState(() => _hidePassword = !_hidePassword),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _confirmPassword,
+          enabled: !_busy,
+          obscureText: _hideConfirm,
+          decoration: passwordInputDecoration(
+            label: S.t('Confirm password', 'Thibitisha nenosiri'),
+            hidden: _hideConfirm,
+            onToggle: () => setState(() => _hideConfirm = !_hideConfirm),
+          ),
         ),
         const SizedBox(height: 14),
         FilledButton.icon(
@@ -205,6 +234,11 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
                             contentPadding: EdgeInsets.zero,
                             title: Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
                             subtitle: Text('${user.email}  •  ${user.role}  •  uid ${user.id}'),
+                            trailing: IconButton(
+                              tooltip: 'Set password',
+                              onPressed: () => showManagedPasswordDialog(context, user),
+                              icon: const Icon(Icons.password_rounded, color: Color(0xff0f766e)),
+                            ),
                           ),
                       ],
                     );

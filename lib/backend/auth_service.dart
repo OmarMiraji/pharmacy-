@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'auth_account_service.dart';
 import 'firestore_collections.dart';
+import 'medicine_service.dart';
 import 'permissions.dart';
 import 'pharmacy_service.dart';
 import 'tenant_context.dart';
@@ -9,16 +11,6 @@ import 'user_profile.dart';
 
 class AuthService {
   AuthService({FirebaseAuth? auth}) : _auth = auth ?? FirebaseAuth.instance;
-
-  static const List<String> developerEmails = [
-    'dev@phyimacy.com',
-    'developer@phyimacy.com',
-    'root@phyimacy.com',
-    'admin@phyimacy.com',
-    'owner@phyimacy.com',
-    'superadmin@phyimacy.com',
-    'omar@gmail.com',
-  ];
 
   final FirebaseAuth _auth;
 
@@ -46,14 +38,31 @@ class AuthService {
     }
   }
 
-  Future<void> signOut() async {
-    TenantContext.instance.clear();
-    await _auth.signOut();
+  Future<void> changeOwnPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final next = newPassword.trim();
+    if (next.length < 6) throw ArgumentError('New password must be at least 6 characters.');
+    await confirmPassword(currentPassword);
+    try {
+      await currentUser!.updatePassword(next);
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'weak-password') {
+        throw StateError('Choose a stronger password (at least 6 characters).');
+      }
+      throw StateError(error.message ?? 'Could not change password.');
+    }
   }
 
-  bool isDeveloperEmail(String? email) {
-    final normalized = (email ?? '').trim().toLowerCase();
-    return developerEmails.contains(normalized);
+  Future<void> sendPasswordReset(String email) async {
+    await AuthAccountService().sendPasswordReset(email);
+  }
+
+  Future<void> signOut() async {
+    MedicineService.dropSharedListeners();
+    TenantContext.instance.clear();
+    await _auth.signOut();
   }
 
   Future<UserCredential> signIn({required String email, required String password}) {
@@ -90,7 +99,7 @@ class AuthService {
     final snapshot = await _readUserDocument(userDocRef);
 
     final firestoreRole = snapshot.exists ? UserProfile.fromFirestore(snapshot).role.trim().toLowerCase() : '';
-    final isRootAccount = isDeveloperEmail(user.email) || firestoreRole == 'super_admin';
+    final isRootAccount = firestoreRole == 'super_admin';
 
     if (snapshot.exists) {
       final profile = UserProfile.fromFirestore(snapshot);

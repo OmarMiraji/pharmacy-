@@ -1,14 +1,54 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import 'firestore_collections.dart';
 import 'models.dart';
+import 'offline_sync_service.dart';
+import 'expiry_priority.dart';
+import 'expiry_stock.dart';
+import 'stock_ledger.dart';
+import 'selling_units.dart';
 import 'tenant_context.dart';
+
+class MedicineImportReport {
+  const MedicineImportReport({
+    required this.imported,
+    required this.skippedExisting,
+    required this.failed,
+    this.errors = const [],
+  });
+
+  final int imported;
+  final int skippedExisting;
+  final int failed;
+  final List<String> errors;
+
+  int get total => imported + skippedExisting + failed;
+}
 
 class MedicineService {
   MedicineService({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
+
+  static String? _sharedShop;
+  static List<Medicine>? _lastMedicines;
+  static List<MedicineBatch>? _lastBatches;
+  static List<CategoryOption>? _lastCategories;
+  static StreamController<List<Medicine>>? _medicineEvents;
+  static StreamController<List<MedicineBatch>>? _batchEvents;
+  static StreamController<List<CategoryOption>>? _categoryEvents;
+  static Stream<List<Medicine>>? _medicineView;
+  static Stream<List<MedicineBatch>>? _batchView;
+  static Stream<List<CategoryOption>>? _categoryView;
+  static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _medicineSub;
+  static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _batchSub;
+  static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _categorySub;
+  static VoidCallback? _offlineListener;
 
   CollectionReference<Map<String, dynamic>> get _medicines =>
       _firestore.collection(FirestoreCollections.medicines);
@@ -21,55 +61,120 @@ class MedicineService {
 
   TenantContext get _tenant => TenantContext.instance;
 
-  Stream<List<Medicine>> watchMedicines() {
-    return _tenant
+  static void dropSharedListeners() {
+    _medicineSub?.cancel();
+    _batchSub?.cancel();
+    _categorySub?.cancel();
+    _medicineSub = null;
+    _batchSub = null;
+    _categorySub = null;
+    if (_offlineListener != null) {
+      OfflineSyncService.instance.removeListener(_offlineListener!);
+      _offlineListener = null;
+    }
+    _medicineEvents?.close();
+    _batchEvents?.close();
+    _categoryEvents?.close();
+    _medicineEvents = null;
+    _batchEvents = null;
+    _categoryEvents = null;
+    _medicineView = null;
+    _batchView = null;
+    _categoryView = null;
+    _lastMedicines = null;
+    _lastBatches = null;
+    _lastCategories = null;
+    _sharedShop = null;
+  }
+
+  void _ensureSharedShop() {
+    final shop = _tenant.pharmacyId ?? '';
+    if (_sharedShop == shop && _medicineEvents != null) return;
+    dropSharedListeners();
+    _sharedShop = shop;
+    _medicineEvents = StreamController<List<Medicine>>.broadcast();
+    _batchEvents = StreamController<List<MedicineBatch>>.broadcast();
+    _categoryEvents = StreamController<List<CategoryOption>>.broadcast();
+
+    void emitMedicines() {
+      final latest = _lastMedicines;
+      if (latest == null) return;
+      _medicineEvents?.add(OfflineSyncService.instance.applyLocalStock(latest));
+    }
+
+    _medicineSub = _tenant
         .scoped(_medicines)
         .where('isActive', isEqualTo: true)
         .snapshots()
-        .map((snapshot) {
-      final medicines = snapshot.docs.map(Medicine.fromFirestore).toList();
-      medicines.sort((a, b) => a.name.compareTo(b.name));
-      return medicines;
+        .listen((snapshot) {
+      final latest = snapshot.docs.map(Medicine.fromFirestore).toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      _lastMedicines = latest;
+      emitMedicines();
+    }, onError: (Object error, StackTrace stack) {
+      _medicineEvents?.addError(error, stack);
     });
-  }
 
-  Stream<List<CategoryOption>> watchCategories() {
-    return _tenant
+    _offlineListener = emitMedicines;
+    OfflineSyncService.instance.addListener(_offlineListener!);
+
+    _batchSub = _tenant.scoped(_batches).snapshots().listen((snapshot) {
+      final batches = snapshot.docs.map(MedicineBatch.fromFirestore).toList()
+        ..sort((a, b) => a.expiryDate.compareTo(b.expiryDate));
+      _lastBatches = batches;
+      _batchEvents?.add(batches);
+    }, onError: (Object error, StackTrace stack) {
+      _batchEvents?.addError(error, stack);
+    });
+
+    _categorySub = _tenant
         .scoped(_categories)
         .where('isActive', isEqualTo: true)
         .snapshots()
-        .map((snapshot) {
+        .listen((snapshot) {
       final categories = snapshot.docs
-          .map((doc) => CategoryOption(
-                id: doc.id,
-                name: doc.data()['name'] as String? ?? '',
-              ))
+          .map((doc) => CategoryOption(id: doc.id, name: doc.data()['name'] as String? ?? ''))
           .where((category) => category.name.isNotEmpty)
-          .toList();
-      categories.sort((a, b) => a.name.compareTo(b.name));
-      return categories;
+          .toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      _lastCategories = categories;
+      _categoryEvents?.add(categories);
+    }, onError: (Object error, StackTrace stack) {
+      _categoryEvents?.addError(error, stack);
     });
+  }
+
+  Stream<List<T>> _replay<T>(List<T>? last, StreamController<List<T>>? events) {
+    final source = events;
+    if (source == null) {
+      return last == null ? const Stream.empty() : Stream<List<T>>.value(last);
+    }
+    if (last == null) return source.stream;
+    return Stream<List<T>>.multi((listener) {
+      listener.add(last);
+      final sub = source.stream.listen(listener.add, onError: listener.addError, onDone: listener.close);
+      listener.onCancel = sub.cancel;
+    });
+  }
+
+  Stream<List<Medicine>> watchMedicines() {
+    _ensureSharedShop();
+    final cached = _lastMedicines == null ? null : OfflineSyncService.instance.applyLocalStock(_lastMedicines!);
+    return _medicineView ??= _replay(cached, _medicineEvents);
+  }
+
+  Stream<List<CategoryOption>> watchCategories() {
+    _ensureSharedShop();
+    return _categoryView ??= _replay(_lastCategories, _categoryEvents);
   }
 
   Stream<List<MedicineBatch>> watchBatches(String medicineId) {
-    return _tenant
-        .scoped(_batches)
-        .where('medicineId', isEqualTo: medicineId)
-        .where('isActive', isEqualTo: true)
-        .snapshots()
-        .map((snapshot) {
-      final batches = snapshot.docs.map(MedicineBatch.fromFirestore).toList();
-      batches.sort((a, b) => a.expiryDate.compareTo(b.expiryDate));
-      return batches;
-    });
+    return watchAllBatches().map((batches) => batches.where((batch) => batch.medicineId == medicineId).toList());
   }
 
   Stream<List<MedicineBatch>> watchAllBatches() {
-    return _tenant.scoped(_batches).where('isActive', isEqualTo: true).snapshots().map((snapshot) {
-      final batches = snapshot.docs.map(MedicineBatch.fromFirestore).toList();
-      batches.sort((a, b) => a.expiryDate.compareTo(b.expiryDate));
-      return batches;
-    });
+    _ensureSharedShop();
+    return _batchView ??= _replay(_lastBatches, _batchEvents);
   }
 
   Future<void> createCategory(String name) async {
@@ -129,62 +234,259 @@ class MedicineService {
     return docRef.id;
   }
 
-  Future<void> importMedicines(List<dynamic> rows) async {
+  Future<MedicineImportReport> importMedicines(
+    List<dynamic> rows, {
+    void Function(int done, int total)? onProgress,
+  }) async {
     _tenant.assertWritable();
-    if (rows.isEmpty) return;
+    if (rows.isEmpty) {
+      return const MedicineImportReport(imported: 0, skippedExisting: 0, failed: 0);
+    }
 
-    for (final row in rows) {
+    var imported = 0;
+    var skippedExisting = 0;
+    var failed = 0;
+    final errors = <String>[];
+    final total = rows.length;
+    final existingSkuSnap = await _tenant.scoped(_medicines).get();
+    final existingSkus = {
+      for (final doc in existingSkuSnap.docs)
+        ((doc.data()['sku'] as String?) ?? '').trim().toUpperCase(),
+    }..removeWhere((sku) => sku.isEmpty);
+    final categoryIds = <String, String>{};
+
+    for (var i = 0; i < rows.length; i++) {
+      onProgress?.call(i, total);
+      final row = rows[i];
       if (row is! Map<String, dynamic>) {
+        failed++;
         continue;
       }
 
-      final sku = (row['sku'] as String? ?? '').trim();
-      if (sku.isEmpty) continue;
+      try {
+        final sku = (row['sku'] as String? ?? '').trim().toUpperCase();
+        if (sku.isEmpty) {
+          failed++;
+          errors.add('Row ${i + 1}: missing SKU');
+          continue;
+        }
 
-      final existingSku = await _tenant.scoped(_medicines).where('sku', isEqualTo: sku).limit(1).get();
-      if (existingSku.docs.isNotEmpty) {
-        continue;
-      }
+        if (existingSkus.contains(sku)) {
+          skippedExisting++;
+          continue;
+        }
 
-      final categoryId = await findOrCreateCategoryId((row['category'] as String? ?? '').trim());
-      final supplierId = await findOrCreateSupplierId((row['supplier_name'] as String? ?? '').trim());
+        final categoryName = (row['category'] as String? ?? '').trim();
+        if (categoryName.isEmpty) {
+          failed++;
+          errors.add('$sku: missing category');
+          continue;
+        }
 
-      final medicineRef = await _medicines.add(_tenant.withTenant({
-        'name': (row['medicine_name'] as String? ?? '').trim(),
-        'sku': sku,
-        'categoryId': categoryId,
-        'unit': (row['unit'] as String? ?? 'unit').trim().isEmpty ? 'unit' : (row['unit'] as String? ?? 'unit').trim(),
-        'purchasePriceMinor': int.tryParse((row['buying_price_minor'] as String? ?? '0').trim()) ?? 0,
-        'sellingPriceMinor': int.tryParse((row['selling_price_minor'] as String? ?? '0').trim()) ?? 0,
-        'quantityOnHand': int.tryParse((row['quantity_on_hand'] as String? ?? '0').trim()) ?? 0,
-        'reorderLevel': int.tryParse((row['reorder_level'] as String? ?? '0').trim()) ?? 0,
-        'requiresPrescription': false,
-        'isActive': true,
-        'supplierId': supplierId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }));
-
-      final expiryDateText = (row['expiry_date'] as String? ?? '').trim();
-      final batchNumber = (row['batch_number'] as String? ?? '').trim();
-      if (expiryDateText.isNotEmpty && batchNumber.isNotEmpty) {
-        await _batches.add(_tenant.withTenant({
-          'medicineId': medicineRef.id,
-          'batchNumber': batchNumber,
-          'expiryDate': Timestamp.fromDate(DateTime.parse(expiryDateText)),
-          'quantityOnHand': int.tryParse((row['quantity_on_hand'] as String? ?? '0').trim()) ?? 0,
-          'unitCostMinor': int.tryParse((row['buying_price_minor'] as String? ?? '0').trim()) ?? 0,
-          'supplierId': supplierId,
-          'purchaseId': null,
-          'isActive': true,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }));
+        final categoryId = categoryIds[categoryName.toLowerCase()] ?? await findOrCreateCategoryId(categoryName);
+        categoryIds[categoryName.toLowerCase()] = categoryId;
+        final packSize = int.tryParse('${row['pack_size'] ?? '1'}'.trim()) ?? 1;
+        final openingQty = int.tryParse('${row['opening_quantity'] ?? row['quantity_on_hand'] ?? '0'}'.trim()) ?? 0;
+        final unitCost = int.tryParse('${row['buying_price'] ?? row['buying_price_minor'] ?? '0'}'.trim()) ?? 0;
+        final selling = int.tryParse('${row['selling_price'] ?? row['selling_price_minor'] ?? '0'}'.trim()) ?? 0;
+        final expiryDateText = '${row['expiry_date'] ?? ''}'.trim();
+        final expiry = ExpiryPriority.parse(expiryDateText);
+        final rx = '${row['requires_prescription'] ?? ''}'.trim().toLowerCase();
+        await createMedicine(
+          name: (row['medicine_name'] as String? ?? '').trim(),
+          sku: sku,
+          categoryId: categoryId,
+          unit: BaseUnits.normalize('${row['unit'] ?? 'Tablet'}'),
+          purchasePriceMinor: unitCost,
+          sellingPriceMinor: selling,
+          reorderLevel: int.tryParse('${row['reorder_level'] ?? '0'}'.trim()) ?? 0,
+          requiresPrescription: rx == '1' || rx == 'yes' || rx == 'true',
+          packSize: packSize < 1 ? 1 : packSize,
+          stripSize: int.tryParse('${row['strip_size'] ?? '0'}'.trim()) ?? 0,
+          boxSize: int.tryParse('${row['box_size'] ?? '0'}'.trim()) ?? 0,
+          allowLooseSale: packSize > 1,
+          expiryDate: expiry,
+          openingQuantity: openingQty,
+          batchNumber: '${row['batch_number'] ?? ''}',
+          createdBy: 'import',
+        );
+        imported++;
+        existingSkus.add(sku);
+      } catch (error) {
+        failed++;
+        errors.add('Row ${i + 1}: $error');
       }
     }
+
+    onProgress?.call(total, total);
+    return MedicineImportReport(
+      imported: imported,
+      skippedExisting: skippedExisting,
+      failed: failed,
+      errors: errors.take(8).toList(),
+    );
   }
 
-  Future<void> createMedicine({
+  Future<int> writeOffExpiredLine({required ExpiredStockLine line, required String createdBy}) async {
+    _tenant.assertWritable();
+    if (line.quantity <= 0) return 0;
+    if (!ExpiryPriority.isExpired(line.expiry)) {
+      throw StateError('Only expired stock can be removed from this list.');
+    }
+
+    final medicineRef = _medicines.doc(line.medicineId);
+    final batchRef = line.batchId == null || line.batchId!.isEmpty ? null : _batches.doc(line.batchId);
+    final movementRef = _firestore.collection(FirestoreCollections.stockMovements).doc();
+
+    return _firestore.runTransaction((transaction) async {
+      final medicineSnapshot = await transaction.get(medicineRef);
+      if (!medicineSnapshot.exists) throw StateError('The medicine was not found.');
+      DocumentSnapshot<Map<String, dynamic>>? batchSnapshot;
+      if (batchRef != null) {
+        batchSnapshot = await transaction.get(batchRef);
+      }
+      var take = line.quantity;
+      if (batchSnapshot != null && batchSnapshot.exists) {
+        final batchQty = (batchSnapshot.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+        if (batchQty > 0 && batchQty < take) take = batchQty;
+      }
+      final currentStock = (medicineSnapshot.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+      if (take > currentStock) take = currentStock;
+      if (take <= 0) return 0;
+      final now = FieldValue.serverTimestamp();
+      transaction.update(medicineRef, {
+        'quantityOnHand': currentStock - take,
+        'updatedAt': now,
+      });
+      if (batchRef != null && batchSnapshot != null && batchSnapshot.exists) {
+        final batchQty = (batchSnapshot.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+        final left = batchQty - take;
+        transaction.update(batchRef, {
+          'quantityOnHand': left < 0 ? 0 : left,
+          'isActive': false,
+          'writtenOffReason': 'expiry',
+          'writtenOffAt': now,
+          'updatedAt': now,
+        });
+      }
+      transaction.set(
+        movementRef,
+        StockLedger.movement(
+          medicineId: line.medicineId,
+          medicineName: medicineSnapshot.data()?['name'] as String?,
+          type: 'expiry',
+          quantityChange: -take,
+          createdBy: createdBy,
+          batchId: line.batchId,
+          batchNumber: line.batchNumber,
+          createdAt: now,
+        ),
+      );
+      return take;
+    });
+  }
+
+  Future<int> writeOffExpiredLines({required List<ExpiredStockLine> lines, required String createdBy}) async {
+    _tenant.assertWritable();
+    var total = 0;
+    const chunkSize = 40;
+    for (var offset = 0; offset < lines.length; offset += chunkSize) {
+      final chunk = lines.sublist(offset, math.min(offset + chunkSize, lines.length));
+      total += await _writeOffExpiredChunk(chunk, createdBy);
+    }
+    return total;
+  }
+
+  Future<int> _writeOffExpiredChunk(List<ExpiredStockLine> lines, String createdBy) async {
+    if (lines.isEmpty) return 0;
+    return _firestore.runTransaction((transaction) async {
+      final medicineRefs = <String, DocumentReference<Map<String, dynamic>>>{
+        for (final line in lines) line.medicineId: _medicines.doc(line.medicineId),
+      };
+      final batchRefs = <String, DocumentReference<Map<String, dynamic>>>{
+        for (final line in lines)
+          if (line.batchId != null && line.batchId!.isNotEmpty) line.batchId!: _batches.doc(line.batchId),
+      };
+      final medicineSnaps = await Future.wait(medicineRefs.values.map(transaction.get));
+      final batchSnaps = await Future.wait(batchRefs.values.map(transaction.get));
+      final medicines = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      var i = 0;
+      for (final id in medicineRefs.keys) {
+        medicines[id] = medicineSnaps[i++];
+      }
+      final batches = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      i = 0;
+      for (final id in batchRefs.keys) {
+        batches[id] = batchSnaps[i++];
+      }
+
+      var takenTotal = 0;
+      final now = FieldValue.serverTimestamp();
+      final stockLeft = <String, int>{
+        for (final entry in medicines.entries)
+          if (entry.value.exists) entry.key: (entry.value.data()?['quantityOnHand'] as num?)?.toInt() ?? 0,
+      };
+      final medicineDelta = <String, int>{};
+      for (final line in lines) {
+        if (line.quantity <= 0 || !ExpiryPriority.isExpired(line.expiry)) continue;
+        final medicineSnapshot = medicines[line.medicineId];
+        if (medicineSnapshot == null || !medicineSnapshot.exists) continue;
+        var take = line.quantity;
+        final batchId = line.batchId;
+        if (batchId != null && batchId.isNotEmpty) {
+          final batchSnapshot = batches[batchId];
+          if (batchSnapshot != null && batchSnapshot.exists) {
+            final batchQty = (batchSnapshot.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+            if (batchQty > 0 && batchQty < take) take = batchQty;
+          }
+        }
+        final currentStock = stockLeft[line.medicineId] ?? 0;
+        if (take > currentStock) take = currentStock;
+        if (take <= 0) continue;
+        stockLeft[line.medicineId] = currentStock - take;
+        medicineDelta[line.medicineId] = (medicineDelta[line.medicineId] ?? 0) + take;
+        takenTotal += take;
+        if (batchId != null && batchId.isNotEmpty) {
+          final batchSnapshot = batches[batchId];
+          final batchRef = batchRefs[batchId];
+          if (batchSnapshot != null && batchSnapshot.exists && batchRef != null) {
+            final batchQty = (batchSnapshot.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+            final left = batchQty - take;
+            transaction.update(batchRef, {
+              'quantityOnHand': left < 0 ? 0 : left,
+              'isActive': false,
+              'writtenOffReason': 'expiry',
+              'writtenOffAt': now,
+              'updatedAt': now,
+            });
+          }
+        }
+        transaction.set(
+          _firestore.collection(FirestoreCollections.stockMovements).doc(),
+          StockLedger.movement(
+            medicineId: line.medicineId,
+            medicineName: medicineSnapshot.data()?['name'] as String?,
+            type: 'expiry',
+            quantityChange: -take,
+            createdBy: createdBy,
+            batchId: line.batchId,
+            batchNumber: line.batchNumber,
+            createdAt: now,
+          ),
+        );
+      }
+      for (final entry in medicineDelta.entries) {
+        final original = (medicines[entry.key]?.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+        transaction.update(medicineRefs[entry.key]!, {
+          'quantityOnHand': original - entry.value,
+          'updatedAt': now,
+        });
+      }
+      return takenTotal;
+    });
+  }
+
+  Future<String> createMedicine({
     required String name,
     required String sku,
     required String categoryId,
@@ -193,6 +495,14 @@ class MedicineService {
     required int sellingPriceMinor,
     required int reorderLevel,
     required bool requiresPrescription,
+    int packSize = 1,
+    int stripSize = 0,
+    int boxSize = 0,
+    bool allowLooseSale = false,
+    DateTime? expiryDate,
+    int openingQuantity = 0,
+    String? batchNumber,
+    required String createdBy,
   }) async {
     _tenant.assertWritable();
     if (name.trim().isEmpty || sku.trim().isEmpty || categoryId.trim().isEmpty) {
@@ -201,7 +511,67 @@ class MedicineService {
     if (purchasePriceMinor < 0 || sellingPriceMinor < 0 || reorderLevel < 0) {
       throw ArgumentError('Prices and reorder level cannot be negative.');
     }
-    await _medicines.add(_tenant.withTenant({
+    if (openingQuantity < 0) {
+      throw ArgumentError('Opening quantity cannot be negative.');
+    }
+    if (openingQuantity > 0 && expiryDate == null) {
+      throw ArgumentError('Expiry date is required when adding opening stock.');
+    }
+    final ref = _medicines.doc();
+    if (openingQuantity > 0 && expiryDate != null) {
+      final code = (batchNumber ?? '').trim();
+      final size = packSize < 1 ? 1 : packSize;
+      final stockQty = size > 1 ? openingQuantity * size : openingQuantity;
+      final batchRef = _batches.doc();
+      final movementRef = _firestore.collection(FirestoreCollections.stockMovements).doc();
+      await _firestore.runTransaction((transaction) async {
+        final now = FieldValue.serverTimestamp();
+        transaction.set(ref, _tenant.withTenant({
+          'name': name.trim(),
+          'sku': sku.trim().toUpperCase(),
+          'categoryId': categoryId.trim(),
+          'unit': unit.trim().isEmpty ? 'unit' : unit.trim(),
+          'purchasePriceMinor': purchasePriceMinor,
+          'sellingPriceMinor': sellingPriceMinor,
+          'quantityOnHand': stockQty,
+          'reorderLevel': reorderLevel,
+          'requiresPrescription': requiresPrescription,
+          'isActive': true,
+          'packSize': packSize < 1 ? 1 : packSize,
+          'stripSize': stripSize < 0 ? 0 : stripSize,
+          'boxSize': boxSize < 0 ? 0 : boxSize,
+          'allowLooseSale': packSize > 1,
+          'expiryDate': Timestamp.fromDate(expiryDate),
+          'createdAt': now,
+          'updatedAt': now,
+        }));
+        transaction.set(batchRef, _tenant.withTenant({
+          'medicineId': ref.id,
+          'batchNumber': code.isEmpty ? 'OPEN-${sku.trim().toUpperCase()}' : code,
+          'expiryDate': Timestamp.fromDate(expiryDate),
+          'quantityOnHand': stockQty,
+          'unitCostMinor': purchasePriceMinor,
+          'isActive': true,
+          'createdAt': now,
+          'updatedAt': now,
+        }));
+        transaction.set(
+          movementRef,
+          StockLedger.movement(
+            medicineId: ref.id,
+            medicineName: name.trim(),
+            type: 'purchase',
+            quantityChange: stockQty,
+            createdBy: createdBy,
+            batchId: batchRef.id,
+            batchNumber: code.isEmpty ? 'OPEN-${sku.trim().toUpperCase()}' : code,
+            createdAt: now,
+          ),
+        );
+      });
+      return ref.id;
+    }
+    await ref.set(_tenant.withTenant({
       'name': name.trim(),
       'sku': sku.trim().toUpperCase(),
       'categoryId': categoryId.trim(),
@@ -212,9 +582,114 @@ class MedicineService {
       'reorderLevel': reorderLevel,
       'requiresPrescription': requiresPrescription,
       'isActive': true,
+      'packSize': packSize < 1 ? 1 : packSize,
+      'stripSize': stripSize < 0 ? 0 : stripSize,
+      'boxSize': boxSize < 0 ? 0 : boxSize,
+      'allowLooseSale': packSize > 1,
+      if (expiryDate != null) 'expiryDate': Timestamp.fromDate(expiryDate),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }));
+    return ref.id;
+  }
+
+  Future<void> updateMedicine({
+    required String medicineId,
+    required String name,
+    required String sku,
+    required String categoryId,
+    required String unit,
+    required int purchasePriceMinor,
+    required int sellingPriceMinor,
+    required int reorderLevel,
+    required bool requiresPrescription,
+    int packSize = 1,
+    int stripSize = 0,
+    int boxSize = 0,
+    bool allowLooseSale = false,
+    DateTime? expiryDate,
+  }) async {
+    _tenant.assertWritable();
+    if (medicineId.trim().isEmpty || name.trim().isEmpty || sku.trim().isEmpty || categoryId.trim().isEmpty) {
+      throw ArgumentError('Name, SKU, and category are required.');
+    }
+    if (purchasePriceMinor < 0 || sellingPriceMinor < 0 || reorderLevel < 0) {
+      throw ArgumentError('Prices and reorder level cannot be negative.');
+    }
+    final size = packSize < 1 ? 1 : packSize;
+    final loose = size > 1;
+    final current = await _medicines.doc(medicineId).get();
+    final previous = current.data() ?? const <String, dynamic>{};
+    final oldPack = (previous['packSize'] as num?)?.toInt() ?? 1;
+    await _medicines.doc(medicineId).update({
+      'name': name.trim(),
+      'sku': sku.trim().toUpperCase(),
+      'categoryId': categoryId.trim(),
+      'unit': unit.trim().isEmpty ? 'unit' : unit.trim(),
+      'purchasePriceMinor': purchasePriceMinor,
+      'sellingPriceMinor': sellingPriceMinor,
+      'reorderLevel': reorderLevel,
+      'requiresPrescription': requiresPrescription,
+      'packSize': size,
+      'stripSize': stripSize < 0 ? 0 : stripSize,
+      'boxSize': boxSize < 0 ? 0 : boxSize,
+      'allowLooseSale': loose,
+      if (expiryDate != null) 'expiryDate': Timestamp.fromDate(expiryDate),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    if (oldPack <= 1 && size > 1) {
+      try {
+        await _convertPackStockToTablets(medicineId, size);
+      } on FirebaseException catch (error) {
+        if (error.code != 'permission-denied') rethrow;
+      }
+    }
+    if (expiryDate == null) return;
+    try {
+      final batches = await _tenant
+          .scoped(_batches)
+          .where('medicineId', isEqualTo: medicineId)
+          .where('isActive', isEqualTo: true)
+          .get();
+      final live = batches.docs.where((doc) {
+        final qty = (doc.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+        return qty > 0;
+      }).toList();
+      if (live.length == 1) {
+        await live.first.reference.update({
+          'expiryDate': Timestamp.fromDate(expiryDate),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') rethrow;
+    }
+  }
+
+  Future<void> _convertPackStockToTablets(String medicineId, int packSize) async {
+    if (packSize <= 1) return;
+    final medicineRef = _medicines.doc(medicineId);
+    final results = await Future.wait([
+      medicineRef.get(),
+      _tenant.scoped(_batches).where('medicineId', isEqualTo: medicineId).get(),
+    ]);
+    final medicineSnap = results[0] as DocumentSnapshot<Map<String, dynamic>>;
+    final batches = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final current = (medicineSnap.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+    final batch = _firestore.batch();
+    batch.update(medicineRef, {
+      'quantityOnHand': current * packSize,
+      'reorderLevel': ((medicineSnap.data()?['reorderLevel'] as num?)?.toInt() ?? 0) * packSize,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    for (final doc in batches.docs) {
+      final qty = (doc.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+      batch.update(doc.reference, {
+        'quantityOnHand': qty * packSize,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
   }
 
   Future<void> createBatch({

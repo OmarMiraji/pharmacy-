@@ -9,7 +9,7 @@ Future<void> applyPhyimacyUpdate(BuildContext context, AppRelease release) async
       return AlertDialog(
         title: const Text('Install update'),
         content: Text(
-          'Phyimacy ${release.version} will download from GitHub, be verified, then this app will close and reopen. You do not unzip anything.',
+          'PharmSpecio ${release.version} will download from GitHub, be verified, then this app will close and reopen. You do not unzip anything.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),

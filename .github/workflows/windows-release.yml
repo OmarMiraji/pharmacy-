@@ -32,10 +32,13 @@ jobs:
           $src = "build\windows\x64\runner\Release"
           if (-not (Test-Path $src)) { throw "Windows build output was not found." }
           Compress-Archive -Path "$src\*" -DestinationPath "phyimacy-windows.zip" -Force
+          Copy-Item "phyimacy-windows.zip" "pharmspecio-windows.zip"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: phyimacy-windows.zip
+          files: |
+            phyimacy-windows.zip
+            pharmspecio-windows.zip
           generate_release_notes: true
           make_latest: true

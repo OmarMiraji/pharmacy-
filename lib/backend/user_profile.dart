@@ -27,6 +27,8 @@ class UserProfile {
 
   bool get isSuperAdmin => role == 'super_admin';
 
+  bool get canSeeSalesTotals => isSuperAdmin || role == 'admin';
+
   bool visibleTo(UserProfile? viewer) {
     if (viewer == null) return !isSuperAdmin;
     if (viewer.isSuperAdmin || id == viewer.id) return true;
@@ -39,47 +41,39 @@ class UserProfile {
     if (role == 'admin') {
       return AppPermissions.pharmacyPermissions.contains(permission);
     }
-    return AppPermissions.roleDefaults[role]?[permission] == true || permissions[permission] == true;
-  }
-
-  List<String> missingPharmacyPermissions() {
-    const required = [
-      'medicines.view',
-      'medicines.create',
-      'medicines.update',
-      'inventory.view',
-      'inventory.adjust',
-      'sales.view',
-      'sales.create',
-      'purchases.view',
-      'purchases.create',
-      'purchases.receive',
-      'reports.view',
-    ];
-    return required.where((permission) => !can(permission)).toList();
+    return permissions[permission] == true;
   }
 
   factory UserProfile.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
-    final rawPermissions = data['permissions'] as Map<String, dynamic>? ?? {};
+    final rawPermissions = data['permissions'];
     final permissions = <String, bool>{};
-    _flattenPermissions(rawPermissions, permissions);
-    final role = (data['role'] as String? ?? 'cashier').trim().toLowerCase();
+    if (rawPermissions is Map) {
+      _flattenPermissions(Map<String, dynamic>.from(rawPermissions), permissions);
+    }
+    final role = _asString(data['role']).trim().toLowerCase();
+    final safeRole = role.isEmpty ? 'cashier' : role;
     return UserProfile(
       id: doc.id,
-      employeeCode: data['employeeCode'] as String? ?? '',
-      displayName: data['displayName'] as String? ?? '',
-      email: data['email'] as String? ?? '',
-      role: role,
-      permissions: AppPermissions.resolvedPermissions(role, permissions),
+      employeeCode: _asString(data['employeeCode']),
+      displayName: _asString(data['displayName']),
+      email: _asString(data['email']),
+      role: safeRole,
+      permissions: AppPermissions.resolvedPermissions(safeRole, permissions),
       isActive: data['isActive'] != false,
-      phone: data['phone'] as String?,
+      phone: _asString(data['phone']).trim().isEmpty ? null : _asString(data['phone']),
       pharmacyId: () {
         final raw = data['pharmacyId'];
         if (raw is String && raw.trim().isNotEmpty) return raw.trim();
         return null;
       }(),
     );
+  }
+
+  static String _asString(Object? value) {
+    if (value == null) return '';
+    if (value is String) return value;
+    return value.toString();
   }
 
   static void _flattenPermissions(
@@ -90,8 +84,8 @@ class UserProfile {
     for (final entry in source.entries) {
       final key = entry.key.trim();
       final fullKey = prefix.isEmpty ? key : '$prefix.$key';
-      if (entry.value is Map<String, dynamic>) {
-        _flattenPermissions(entry.value as Map<String, dynamic>, target, prefix: fullKey);
+      if (entry.value is Map) {
+        _flattenPermissions(Map<String, dynamic>.from(entry.value as Map), target, prefix: fullKey);
       } else {
         target[fullKey] = entry.value == true;
       }

@@ -5,33 +5,33 @@ class MedicineImportRow {
     required this.sku,
     required this.medicineName,
     required this.category,
-    required this.strength,
-    required this.form,
     required this.unit,
     required this.packSize,
-    required this.supplierName,
+    required this.stripSize,
+    required this.boxSize,
     required this.buyingPriceMinor,
     required this.sellingPriceMinor,
     required this.reorderLevel,
-    required this.quantityOnHand,
+    required this.openingQuantity,
     required this.expiryDate,
     required this.batchNumber,
+    required this.requiresPrescription,
   });
 
   final String sku;
   final String medicineName;
   final String category;
-  final String strength;
-  final String form;
   final String unit;
-  final String packSize;
-  final String supplierName;
+  final int packSize;
+  final int stripSize;
+  final int boxSize;
   final int buyingPriceMinor;
   final int sellingPriceMinor;
   final int reorderLevel;
-  final int quantityOnHand;
+  final int openingQuantity;
   final String expiryDate;
   final String batchNumber;
+  final bool requiresPrescription;
 }
 
 class MedicineImportValidationResult {
@@ -61,38 +61,55 @@ class MedicineImportService {
     'sku',
     'medicine_name',
     'category',
-    'strength',
-    'form',
     'unit',
     'pack_size',
-    'supplier_name',
-    'buying_price_minor',
-    'selling_price_minor',
+    'buying_price',
+    'selling_price',
     'reorder_level',
-    'quantity_on_hand',
+  ];
+
+  static const List<String> templateHeaders = [
+    ...requiredHeaders,
+    'strip_size',
+    'box_size',
+    'opening_quantity',
     'expiry_date',
     'batch_number',
   ];
 
   static String generateTemplateCsv() {
-    final header = requiredHeaders.join(',');
-    final exampleRow = [
+    final header = templateHeaders.join(',');
+    final tablet = [
       'MED-001',
       'Amoxicillin 500mg',
       'Antibiotics',
-      '500mg',
-      'Capsule',
-      'box',
-      '30',
-      'Alpha Pharma',
+      'Tablet',
+      '20',
       '1500',
       '2000',
-      '20',
-      '100',
+      '10',
+      '',
+      '',
+      '40',
       '2027-12-31',
       'B-001',
     ].join(',');
-    return '$header\n$exampleRow';
+    final bottle = [
+      'MED-002',
+      'Cough syrup 100ml',
+      'Syrup',
+      'Bottle',
+      '1',
+      '800',
+      '1200',
+      '5',
+      '',
+      '',
+      '12',
+      '2027-06-30',
+      'B-002',
+    ].join(',');
+    return '$header\n$tablet\n$bottle\n';
   }
 
   static MedicineImportValidationResult validateCsv(String csv) {
@@ -101,9 +118,8 @@ class MedicineImportService {
       return const MedicineImportValidationResult(validRows: [], invalidRows: []);
     }
 
-    final headerLine = lines.first;
-    final headers = _parseCsvLine(headerLine);
-    final missing = requiredHeaders.where((name) => !headers.map((header) => header.trim().toLowerCase()).contains(name)).toList();
+    final headers = _parseCsvLine(lines.first).map((header) => header.trim().toLowerCase()).toList();
+    final missing = requiredHeaders.where((name) => !_headerPresent(headers, name)).toList();
     if (missing.isNotEmpty) {
       return MedicineImportValidationResult(
         validRows: const [],
@@ -128,62 +144,62 @@ class MedicineImportService {
 
       final data = <String, String>{
         for (var index = 0; index < headers.length; index++)
-          headers[index].trim().toLowerCase(): row.length > index ? row[index].trim() : '',
+          headers[index]: row.length > index ? row[index].trim() : '',
       };
 
       final errors = <String>[];
-      final sku = data['sku'] ?? '';
-      final medicineName = data['medicine_name'] ?? '';
-      final category = data['category'] ?? '';
-      final strength = data['strength'] ?? '';
-      final form = data['form'] ?? '';
-      final unit = data['unit'] ?? '';
-      final packSize = data['pack_size'] ?? '';
-      final supplierName = data['supplier_name'] ?? '';
-      final buyingPriceText = data['buying_price_minor'] ?? '';
-      final sellingPriceText = data['selling_price_minor'] ?? '';
-      final reorderText = data['reorder_level'] ?? '';
-      final quantityText = data['quantity_on_hand'] ?? '';
-      final expiryDate = data['expiry_date'] ?? '';
-      final batchNumber = data['batch_number'] ?? '';
+      final sku = _col(data, ['sku']);
+      final medicineName = _col(data, ['medicine_name', 'name']);
+      final category = _col(data, ['category']);
+      final unit = _col(data, ['unit', 'form']);
+      final packText = _col(data, ['pack_size']);
+      final buyingText = _col(data, ['buying_price', 'buying_price_minor', 'purchase_price']);
+      final sellingText = _col(data, ['selling_price', 'selling_price_minor']);
+      final reorderText = _col(data, ['reorder_level']);
+      final openingText = _col(data, ['opening_quantity', 'quantity_on_hand']);
+      final expiryDate = _col(data, ['expiry_date']);
+      final batchNumber = _col(data, ['batch_number']);
+      final stripText = _col(data, ['strip_size']);
+      final boxText = _col(data, ['box_size']);
+      final rxText = _col(data, ['requires_prescription']);
 
       if (sku.isEmpty) errors.add('sku');
       if (medicineName.isEmpty) errors.add('medicine_name');
       if (category.isEmpty) errors.add('category');
-      if (strength.isEmpty) errors.add('strength');
-      if (form.isEmpty) errors.add('form');
       if (unit.isEmpty) errors.add('unit');
-      if (packSize.isEmpty) errors.add('pack_size');
-      if (supplierName.isEmpty) errors.add('supplier_name');
-      if (buyingPriceText.isEmpty) errors.add('buying_price_minor');
-      if (sellingPriceText.isEmpty) errors.add('selling_price_minor');
+      if (packText.isEmpty) errors.add('pack_size');
+      if (buyingText.isEmpty) errors.add('buying_price');
+      if (sellingText.isEmpty) errors.add('selling_price');
       if (reorderText.isEmpty) errors.add('reorder_level');
-      if (quantityText.isEmpty) errors.add('quantity_on_hand');
-      if (expiryDate.isEmpty) errors.add('expiry_date');
-      if (batchNumber.isEmpty) errors.add('batch_number');
 
-      final buyingPrice = int.tryParse(buyingPriceText);
-      final sellingPrice = int.tryParse(sellingPriceText);
+      final packSize = int.tryParse(packText);
+      final buyingPrice = int.tryParse(buyingText);
+      final sellingPrice = int.tryParse(sellingText);
       final reorderLevel = int.tryParse(reorderText);
-      final quantityOnHand = int.tryParse(quantityText);
+      final openingQuantity = openingText.isEmpty ? 0 : int.tryParse(openingText);
+      final stripSize = stripText.isEmpty ? 0 : int.tryParse(stripText);
+      final boxSize = boxText.isEmpty ? 0 : int.tryParse(boxText);
 
-      if (buyingPriceText.isNotEmpty && buyingPrice == null) errors.add('buying_price_minor must be a number');
-      if (sellingPriceText.isNotEmpty && sellingPrice == null) errors.add('selling_price_minor must be a number');
-      if (reorderText.isNotEmpty && reorderLevel == null) errors.add('reorder_level must be a number');
-      if (quantityText.isNotEmpty && quantityOnHand == null) errors.add('quantity_on_hand must be a number');
-
-      if (buyingPrice != null && buyingPrice < 0) errors.add('buying_price_minor cannot be negative');
-      if (sellingPrice != null && sellingPrice < 0) errors.add('selling_price_minor cannot be negative');
+      if (packText.isNotEmpty && (packSize == null || packSize < 1)) errors.add('pack_size must be 1 or more');
+      if (buyingText.isNotEmpty && buyingPrice == null) errors.add('buying_price must be a whole TZS number');
+      if (sellingText.isNotEmpty && sellingPrice == null) errors.add('selling_price must be a whole TZS number');
+      if (reorderText.isNotEmpty && reorderLevel == null) errors.add('reorder_level must be a whole number');
+      if (openingText.isNotEmpty && openingQuantity == null) errors.add('opening_quantity must be a whole number');
+      if (stripText.isNotEmpty && stripSize == null) errors.add('strip_size must be a whole number');
+      if (boxText.isNotEmpty && boxSize == null) errors.add('box_size must be a whole number');
+      if (buyingPrice != null && buyingPrice < 0) errors.add('buying_price cannot be negative');
+      if (sellingPrice != null && sellingPrice < 0) errors.add('selling_price cannot be negative');
       if (reorderLevel != null && reorderLevel < 0) errors.add('reorder_level cannot be negative');
-      if (quantityOnHand != null && quantityOnHand < 0) errors.add('quantity_on_hand cannot be negative');
-      if (buyingPrice != null && sellingPrice != null && sellingPrice < buyingPrice) errors.add('selling_price_minor must be greater than or equal to buying_price_minor');
-
-      try {
-        if (expiryDate.isNotEmpty) {
+      if (openingQuantity != null && openingQuantity < 0) errors.add('opening_quantity cannot be negative');
+      if ((openingQuantity ?? 0) > 0 && expiryDate.isEmpty) {
+        errors.add('expiry_date is required when opening_quantity is greater than 0');
+      }
+      if (expiryDate.isNotEmpty) {
+        try {
           DateTime.parse(expiryDate);
+        } catch (_) {
+          errors.add('expiry_date must use YYYY-MM-DD');
         }
-      } catch (_) {
-        errors.add('expiry_date must use YYYY-MM-DD format');
       }
 
       if (errors.isEmpty) {
@@ -191,28 +207,42 @@ class MedicineImportService {
           sku: sku,
           medicineName: medicineName,
           category: category,
-          strength: strength,
-          form: form,
           unit: unit,
-          packSize: packSize,
-          supplierName: supplierName,
+          packSize: packSize ?? 1,
+          stripSize: stripSize ?? 0,
+          boxSize: boxSize ?? 0,
           buyingPriceMinor: buyingPrice ?? 0,
           sellingPriceMinor: sellingPrice ?? 0,
           reorderLevel: reorderLevel ?? 0,
-          quantityOnHand: quantityOnHand ?? 0,
+          openingQuantity: openingQuantity ?? 0,
           expiryDate: expiryDate,
           batchNumber: batchNumber,
+          requiresPrescription: rxText == '1' || rxText.toLowerCase() == 'yes' || rxText.toLowerCase() == 'true',
         ));
       } else {
-        invalidRows.add(MedicineImportInvalidRow(
-          rowNumber: i + 1,
-          data: data,
-          errors: errors,
-        ));
+        invalidRows.add(MedicineImportInvalidRow(rowNumber: i + 1, data: data, errors: errors));
       }
     }
 
     return MedicineImportValidationResult(validRows: validRows, invalidRows: invalidRows);
+  }
+
+  static bool _headerPresent(List<String> headers, String name) {
+    const aliases = {
+      'buying_price': ['buying_price', 'buying_price_minor', 'purchase_price'],
+      'selling_price': ['selling_price', 'selling_price_minor'],
+      'unit': ['unit', 'form'],
+    };
+    final names = aliases[name] ?? [name];
+    return names.any(headers.contains);
+  }
+
+  static String _col(Map<String, String> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value != null && value.trim().isNotEmpty) return value.trim();
+    }
+    return '';
   }
 
   static List<String> _parseCsvLine(String line) {

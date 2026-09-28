@@ -7,6 +7,7 @@ import '../backend/pharmacy_service.dart';
 import '../backend/tenant_context.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
+import '../l10n/app_locale.dart';
 
 class PharmacyWorkspaceSettingsScreen extends StatefulWidget {
   const PharmacyWorkspaceSettingsScreen({required this.profile, super.key});
@@ -221,9 +222,9 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Pharmacy profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+        Text(S.t('Pharmacy profile', 'Wasifu wa duka'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
         const SizedBox(height: 6),
-        const Text('Update shop information. Clear one data group or everything after entering your password.', style: TextStyle(color: Color(0xff68807d))),
+        Text(S.t('Update shop information. Clear one data group or everything after entering your password.', 'Sasisha taarifa za duka. Futa kundi moja au kila kitu baada ya kuweka nenosiri.'), style: const TextStyle(color: Color(0xff68807d))),
         const SizedBox(height: 18),
         if (widget.profile.isSuperAdmin)
           StreamBuilder<List<PharmacyRecord>>(
@@ -258,14 +259,14 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
                 TextFormField(
                   controller: _name,
                   enabled: _canManage && !_busy,
-                  decoration: const InputDecoration(labelText: 'Pharmacy name'),
-                  validator: (value) => (value == null || value.trim().isEmpty) ? 'Name is required' : null,
+                  decoration: InputDecoration(labelText: S.t('Pharmacy name', 'Jina la duka')),
+                  validator: (value) => (value == null || value.trim().isEmpty) ? S.t('Name is required', 'Jina linahitajika') : null,
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _phone,
                   enabled: _canManage && !_busy,
-                  decoration: const InputDecoration(labelText: 'Phone'),
+                  decoration: InputDecoration(labelText: S.t('Phone', 'Simu')),
                   validator: (value) {
                     final text = value?.trim() ?? '';
                     if (text.isEmpty) return null;
@@ -277,14 +278,14 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
                 TextFormField(
                   controller: _address,
                   enabled: _canManage && !_busy,
-                  decoration: const InputDecoration(labelText: 'Address'),
+                  decoration: InputDecoration(labelText: S.t('Address', 'Anwani')),
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _note,
                   enabled: _canManage && !_busy,
                   maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Notes'),
+                  decoration: InputDecoration(labelText: S.t('Notes', 'Maelezo')),
                 ),
                 const SizedBox(height: 14),
                 Align(
@@ -292,20 +293,20 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
                   child: FilledButton.icon(
                     onPressed: _canManage && !_busy ? _saveProfile : null,
                     icon: const Icon(Icons.save_rounded),
-                    label: Text(_busy ? 'Saving...' : 'Save pharmacy information'),
+                    label: Text(_busy ? S.t('Saving...', 'Inahifadhi...') : S.t('Save pharmacy information', 'Hifadhi taarifa za duka')),
                   ),
                 ),
               ],
             ),
           ),
         const SizedBox(height: 28),
-        const Text('Data tools', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+        Text(S.t('Data tools', 'Zana za data'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: _clearTarget,
-          decoration: const InputDecoration(labelText: 'Clear'),
+          decoration: InputDecoration(labelText: S.t('Clear', 'Futa')),
           items: [
-            const DropdownMenuItem(value: 'all', child: Text('All shop data')),
+            DropdownMenuItem(value: 'all', child: Text(S.t('All shop data', 'Data yote ya duka'))),
             for (final entry in PharmacyDataService.collectionLabels.entries)
               DropdownMenuItem(value: entry.key, child: Text(entry.value)),
           ],
@@ -319,25 +320,25 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
             FilledButton.tonalIcon(
               onPressed: _canManage && !_busy ? _backup : null,
               icon: const Icon(Icons.backup_rounded),
-              label: const Text('Backup data'),
+              label: Text(S.t('Backup data', 'Backup data')),
             ),
             FilledButton.tonalIcon(
               onPressed: _canManage && !_busy ? _restore : null,
               icon: const Icon(Icons.settings_backup_restore_rounded),
-              label: const Text('Restore backup'),
+              label: Text(S.t('Restore backup', 'Rudisha backup')),
             ),
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xffb42318)),
               onPressed: _canManage && !_busy ? _clear : null,
               icon: const Icon(Icons.delete_forever_rounded),
-              label: const Text('Clear selected data'),
+              label: Text(S.t('Clear selected data', 'Futa data iliyochaguliwa')),
             ),
             if (widget.profile.isSuperAdmin)
               FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: const Color(0xff9a3412)),
                 onPressed: _busy ? null : _clearUsers,
                 icon: const Icon(Icons.group_off_rounded),
-                label: const Text('Clear shop users'),
+                label: Text(S.t('Clear shop users', 'Futa watumiaji wa duka')),
               ),
           ],
         ),

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firestore_collections.dart';
+import 'stock_ledger.dart';
 import 'tenant_context.dart';
 
 class SupplierOption {
@@ -69,7 +70,11 @@ class PurchaseService {
     await _firestore.runTransaction((transaction) async {
       final medicineSnapshot = await transaction.get(medicineRef);
       if (!medicineSnapshot.exists) throw StateError('Medicine does not exist.');
-      final currentStock = (medicineSnapshot.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+      final medicineData = medicineSnapshot.data() ?? const <String, dynamic>{};
+      final packSize = (medicineData['packSize'] as num?)?.toInt() ?? 1;
+      final loose = packSize > 1;
+      final stockQty = loose ? quantity * packSize : quantity;
+      final currentStock = (medicineData['quantityOnHand'] as num?)?.toInt() ?? 0;
       final now = FieldValue.serverTimestamp();
       transaction.set(purchaseRef, TenantContext.instance.withTenant({
         'supplierId': supplierId,
@@ -92,7 +97,7 @@ class PurchaseService {
         'expiryDate': Timestamp.fromDate(expiryDate),
       });
       transaction.update(medicineRef, {
-        'quantityOnHand': currentStock + quantity,
+        'quantityOnHand': currentStock + stockQty,
         'purchasePriceMinor': unitCostMinor,
         'supplierId': supplierId,
         'updatedAt': now,
@@ -101,7 +106,7 @@ class PurchaseService {
         'medicineId': medicineId,
         'batchNumber': normalizedBatch,
         'expiryDate': Timestamp.fromDate(expiryDate),
-        'quantityOnHand': quantity,
+        'quantityOnHand': stockQty,
         'unitCostMinor': unitCostMinor,
         'supplierId': supplierId,
         'purchaseId': purchaseRef.id,
@@ -109,14 +114,17 @@ class PurchaseService {
         'createdAt': now,
         'updatedAt': now,
       }));
-      transaction.set(movementRef, TenantContext.instance.withTenant({
-        'medicineId': medicineId,
-        'type': 'purchase',
-        'quantityChange': quantity,
-        'referenceId': purchaseRef.id,
-        'createdBy': createdBy,
-        'createdAt': now,
-      }));
+      transaction.set(movementRef, StockLedger.movement(
+        medicineId: medicineId,
+        medicineName: medicineSnapshot.data()?['name'] as String?,
+        type: 'purchase',
+        quantityChange: quantity,
+        referenceId: purchaseRef.id,
+        createdBy: createdBy,
+        batchId: batchRef.id,
+        batchNumber: normalizedBatch,
+        createdAt: now,
+      ));
     });
     return purchaseRef.id;
   }

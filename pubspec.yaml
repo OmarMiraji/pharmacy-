@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.2+3
+version: 1.0.5+6
 
 environment:
   sdk: ^3.13.3
@@ -37,6 +37,7 @@ dependencies:
   firebase_core: ^4.15.0
   firebase_auth: ^6.7.0
   cloud_firestore: ^6.10.0
+  cloud_functions: ^6.0.5
   printing: ^5.13.1
   pdf: ^3.11.1
   path_provider: ^2.1.6
@@ -45,6 +46,9 @@ dependencies:
   url_launcher: ^6.3.2
   archive: ^4.0.7
   crypto: ^3.0.7
+  google_fonts: ^6.3.2
+  flutter_secure_storage: ^9.2.4
+  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +71,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/images/pharmacy-shelves.jpg
+    - assets/brand/pharmspecio.png
+    - google_fonts/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

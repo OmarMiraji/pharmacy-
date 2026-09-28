@@ -1,0 +1,13 @@
+{
+  "name": "phyimacy-functions",
+  "description": "Phyimacy password admin",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.3.2"
+  },
+  "private": true
+}

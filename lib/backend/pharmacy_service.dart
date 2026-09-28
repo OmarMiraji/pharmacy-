@@ -55,8 +55,8 @@ class PharmacyService {
 
   Stream<List<PharmacyRecord>> watchPharmacies() {
     return _firestore.collection(FirestoreCollections.pharmacies).snapshots().map((snapshot) {
-      final pharmacies = snapshot.docs.map(PharmacyRecord.fromDoc).toList()
-        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      final pharmacies = snapshot.docs.map(PharmacyRecord.fromDoc).toList();
+      pharmacies.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       return pharmacies;
     });
   }
@@ -92,6 +92,7 @@ class PharmacyService {
       ownerId = await AuthAccountService().createAuthUser(
         email: ownerMail,
         password: password,
+        role: 'admin',
       );
     }
     final trialEndsAt = DateTime.now().add(Duration(days: trialDays));
@@ -134,7 +135,7 @@ class PharmacyService {
     final id = pharmacyId.trim();
     final mail = email.trim().toLowerCase();
     if (id.isEmpty) throw ArgumentError('Pharmacy is required.');
-    final uid = await AuthAccountService().createAuthUser(email: mail, password: password);
+    final uid = await AuthAccountService().createAuthUser(email: mail, password: password, role: 'admin');
     await attachPharmacyAdmin(
       pharmacyId: id,
       ownerUserId: uid,
@@ -200,7 +201,7 @@ class PharmacyService {
       }
     }
 
-    if (profile.isSuperAdmin && linkedId.isEmpty) {
+    if (profile.isSuperAdmin) {
       tenant.bind(
         isSuperAdmin: true,
         pharmacyId: null,
@@ -219,7 +220,7 @@ class PharmacyService {
           isUnlocked: true,
           isTrial: false,
           access: PharmacyAccess.full,
-          message: 'Super admin access.',
+          message: 'System support access.',
         ),
         readOnly: false,
       );
@@ -228,14 +229,14 @@ class PharmacyService {
     if (linkedId.isEmpty) {
       tenant.clear();
       throw StateError(
-        'This account is not assigned to a pharmacy. Super admin must attach this Auth UID to a pharmacy before login.',
+        'This account is not assigned to a shop. Contact your administrator.',
       );
     }
 
     final pharmacy = await getPharmacy(linkedId);
     if (pharmacy == null) {
       tenant.clear();
-      throw StateError('Pharmacy $linkedId was not found or this account cannot open it.');
+      throw StateError('This shop could not be opened. Contact your administrator.');
     }
     final license = SubscriptionService.licenseFromPharmacy(pharmacy);
     final blocked = !profile.isSuperAdmin && license.isBlocked;
