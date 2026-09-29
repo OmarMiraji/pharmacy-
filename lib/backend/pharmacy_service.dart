@@ -155,6 +155,7 @@ class PharmacyService {
     String? phone,
     String? address,
     String? note,
+    String? ownerEmail,
   }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) throw ArgumentError('Pharmacy name is required.');
@@ -164,6 +165,7 @@ class PharmacyService {
       'phone': phone?.trim() ?? '',
       'address': address?.trim() ?? '',
       'note': note?.trim() ?? '',
+      if (ownerEmail != null) 'ownerEmail': ownerEmail.trim().toLowerCase(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     if (TenantContext.instance.pharmacyId == pharmacyId) {

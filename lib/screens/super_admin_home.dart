@@ -13,12 +13,12 @@ import '../backend/user_profile.dart';
 import '../theme/brand.dart';
 import '../l10n/app_locale.dart';
 import '../widgets/language_toggle.dart';
-import 'accounts_admin_screen.dart';
 import 'app_update_screen.dart';
 import 'chat_assistant_panel.dart';
 import 'password_security.dart';
 import 'pharmacy_workspace_settings_screen.dart';
 import 'subscription_admin_screen.dart';
+import 'support_directory_screen.dart';
 
 class SuperAdminHome extends StatefulWidget {
   const SuperAdminHome({required this.profile, required this.authService, super.key});
@@ -185,7 +185,7 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-                    child: selected.$1 == 'Logins' || selected.$1 == 'Customers'
+                    child: selected.$1 == 'Logins' || selected.$1 == 'Customers' || selected.$1 == 'Shops'
                         ? _body(selected.$1)
                         : SingleChildScrollView(child: _body(selected.$1)),
                   ),
@@ -206,11 +206,11 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
   Widget _body(String label) {
     switch (label) {
       case 'Shops':
-        return AccountsAdminScreen(profile: widget.profile);
+        return SupportDirectoryScreen(profile: widget.profile, initialTab: 0);
       case 'Licenses':
         return SubscriptionAdminScreen(profile: widget.profile);
       case 'Logins':
-        return _SupportLoginsView(profile: widget.profile);
+        return SupportDirectoryScreen(profile: widget.profile, initialTab: 1);
       case 'Support data':
         return PharmacyWorkspaceSettingsScreen(profile: widget.profile);
       case 'App updates':

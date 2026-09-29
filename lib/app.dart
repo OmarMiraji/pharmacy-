@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,7 +23,6 @@ import 'backend/subscription_service.dart';
 import 'backend/user_management_service.dart';
 import 'backend/user_profile.dart';
 import 'backend/import_service.dart';
-import 'backend/pharmacy.dart';
 import 'backend/pharmacy_service.dart';
 import 'backend/printer_settings.dart';
 import 'backend/tenant_context.dart';
@@ -40,6 +39,7 @@ import 'screens/app_update_screen.dart';
 import 'screens/apply_app_update.dart';
 import 'screens/accounts_admin_screen.dart';
 import 'screens/password_security.dart';
+import 'screens/staff_account_dialogs.dart';
 import 'screens/chat_assistant_panel.dart';
 import 'screens/login_screen.dart';
 import 'screens/reports_screen.dart';
@@ -188,7 +188,7 @@ class _ProfileLoaderState extends State<ProfileLoader> {
                 children: [
                   CircularProgressIndicator(color: Color(0xFF0F766E)),
                   SizedBox(height: 16),
-                  Text('Opening your shop…'),
+                  Text('Opening your shopâ€¦'),
                 ],
               ),
             ),
@@ -360,7 +360,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     final title = !sync.isOnline
                         ? 'Working without internet'
                         : sync.isSyncing
-                            ? 'Sending saved sales…'
+                            ? 'Sending saved salesâ€¦'
                             : '${sync.pendingCount} saved sale${sync.pendingCount == 1 ? '' : 's'} waiting to send';
                     final subtitle = !sync.isOnline
                         ? (sync.pendingCount == 0
@@ -1073,7 +1073,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '${summary.expiredCount} batches have already expired. Open Medicines → Expired and remove them from stock. That write-off is recorded.',
+                          '${summary.expiredCount} batches have already expired. Open Medicines â†’ Expired and remove them from stock. That write-off is recorded.',
                           style: GoogleFonts.inter(color: const Color(0xff9a3412), fontWeight: FontWeight.w600, height: 1.4),
                         ),
                       ),
@@ -1096,7 +1096,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '${summary.expirySoonCount} batches expire within 90 days. Sell these first — POS already puts the nearest expiry at the top.',
+                          '${summary.expirySoonCount} batches expire within 90 days. Sell these first â€” POS already puts the nearest expiry at the top.',
                           style: GoogleFonts.inter(color: const Color(0xff9a3412), fontWeight: FontWeight.w600, height: 1.4),
                         ),
                       ),
@@ -1228,7 +1228,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                               child: const Icon(Icons.receipt_long_rounded, color: Color(0xff183b3b), size: 19),
                             ),
                             title: Text(sale.receiptNumber, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
-                            subtitle: Text('${sale.paymentMethod.toUpperCase()} • ${sale.createdAt.day}/${sale.createdAt.month}/${sale.createdAt.year}'),
+                            subtitle: Text('${sale.paymentMethod.toUpperCase()} â€¢ ${sale.createdAt.day}/${sale.createdAt.month}/${sale.createdAt.year}'),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -1652,13 +1652,13 @@ class _SalesScreenState extends State<SalesScreen> {
                   title: S.t('Sales & POS', 'Mauzo na POS'),
                   subtitle: expiredCount > 0
                       ? S.t(
-                          '$sellFirstCount medicines should be sold first. $expiredCount already expired — they cannot be sold.',
-                          'Dawa $sellFirstCount ziuzwe kwanza. $expiredCount zimeisha muda — haziwezi kuuzwa.',
+                          '$sellFirstCount medicines should be sold first. $expiredCount already expired â€” they cannot be sold.',
+                          'Dawa $sellFirstCount ziuzwe kwanza. $expiredCount zimeisha muda â€” haziwezi kuuzwa.',
                         )
                       : sellFirstCount > 0
                       ? S.t(
-                          '$sellFirstCount medicines should be sold first — nearest expiry is at the top.',
-                          'Dawa $sellFirstCount ziuzwe kwanza — zinazoisha karibu ziko juu.',
+                          '$sellFirstCount medicines should be sold first â€” nearest expiry is at the top.',
+                          'Dawa $sellFirstCount ziuzwe kwanza â€” zinazoisha karibu ziko juu.',
                         )
                       : S.t(
                           'Stock leaves inventory only when the sale is completed. Nearest expiry is sold first.',
@@ -1697,9 +1697,10 @@ class _SalesScreenState extends State<SalesScreen> {
     var units = medicine.sellUnits;
     if (units.isEmpty) return Future.value(null);
     var selected = units.length > 1
-        ? units.firstWhere((unit) => unit.id == 'pack', orElse: () => units.first)
+        ? units.firstWhere((unit) => unit.id == 'base', orElse: () => units.first)
         : units.first;
-    final qty = TextEditingController(text: '1');
+    final available = _sellableByMedicine[medicine.id] ?? medicine.quantityOnHand;
+    final qty = TextEditingController(text: '${medicine.minSellCountFor(selected, available)}');
     return showDialog<(SellUnit, int)>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -1717,17 +1718,17 @@ class _SalesScreenState extends State<SalesScreen> {
                   Text(
                     units.length > 1
                         ? S.t(
-                            'How is the customer buying this? Pick tablet, pack, strip, or box here. You do not edit the medicine.\nStock: ${medicine.stockLabel(_sellableByMedicine[medicine.id] ?? medicine.quantityOnHand)}',
-                            'Mteja ananunua vipi? Chagua kidonge, pakiti, strip, au boksi hapa. Huhitaji kuedit dawa.\nStock: ${medicine.stockLabel(_sellableByMedicine[medicine.id] ?? medicine.quantityOnHand)}',
+                            'Stock is counted in ${medicine.baseLabel.toLowerCase()}s. Sell from ${medicine.effectiveMinSaleQty} ${medicine.baseLabel.toLowerCase()}s upward (or a whole pack).\nNow: ${medicine.stockLabel(available)}',
+                            'Stock inahesabiwa kwa ${medicine.baseLabel.toLowerCase()}. Uza kuanzia ${medicine.effectiveMinSaleQty} na kuendelea (au pakiti nzima).\nSasa: ${medicine.stockLabel(available)}',
                           )
                         : medicine.canSellPiecesByType
                             ? S.t(
-                                'This is still sold as a whole pack. An admin should set “how many in one pack” once. Then you pick tablets here.\nStock: ${medicine.stockLabel(_sellableByMedicine[medicine.id] ?? medicine.quantityOnHand)}',
-                                'Bado inauzwa kama pakiti nzima. Admin aweke “vidonge ngapi kwenye pack” mara moja. Halafu hapa unachagua vidonge.\nStock: ${medicine.stockLabel(_sellableByMedicine[medicine.id] ?? medicine.quantityOnHand)}',
+                                'This is still sold as a whole pack. An admin should set “how many in one pack” once. Then you pick tablets here.\nStock: ${medicine.stockLabel(available)}',
+                                'Bado inauzwa kama pakiti nzima. Admin aweke “vidonge ngapi kwenye pack” mara moja. Halafu hapa unachagua vidonge.\nStock: ${medicine.stockLabel(available)}',
                               )
                             : S.t(
-                                'How many is the customer buying?\nStock: ${medicine.stockLabel(_sellableByMedicine[medicine.id] ?? medicine.quantityOnHand)}',
-                                'Mteja ananunua ngapi?\nStock: ${medicine.stockLabel(_sellableByMedicine[medicine.id] ?? medicine.quantityOnHand)}',
+                                'How many is the customer buying?\nStock: ${medicine.stockLabel(available)}',
+                                'Mteja ananunua ngapi?\nStock: ${medicine.stockLabel(available)}',
                               ),
                     style: const TextStyle(color: Color(0xff68807d), height: 1.4),
                   ),
@@ -1740,7 +1741,10 @@ class _SalesScreenState extends State<SalesScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(12),
-                          onTap: () => setDialogState(() => selected = unit),
+                          onTap: () => setDialogState(() {
+                            selected = unit;
+                            qty.text = '${medicine.minSellCountFor(unit, available)}';
+                          }),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             child: Row(
@@ -1754,12 +1758,12 @@ class _SalesScreenState extends State<SalesScreen> {
                                 Expanded(
                                   child: Text(
                                     unit.id == 'pack'
-                                        ? S.t('Whole pack (${unit.toBase})  ·  TZS ${unit.unitPriceMinor}', 'Pakiti nzima (${unit.toBase})  ·  TZS ${unit.unitPriceMinor}')
+                                        ? S.t('Whole pack (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}', 'Pakiti nzima (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}')
                                         : unit.id == 'box'
-                                            ? S.t('Box (${unit.toBase})  ·  TZS ${unit.unitPriceMinor}', 'Boksi (${unit.toBase})  ·  TZS ${unit.unitPriceMinor}')
+                                            ? S.t('Box (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}', 'Boksi (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}')
                                             : unit.id == 'strip'
-                                                ? S.t('Strip (${unit.toBase})  ·  TZS ${unit.unitPriceMinor}', 'Strip (${unit.toBase})  ·  TZS ${unit.unitPriceMinor}')
-                                                : S.t('${unit.label}  ·  TZS ${unit.unitPriceMinor} each', '${unit.label}  ·  TZS ${unit.unitPriceMinor} moja'),
+                                                ? S.t('Strip (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}', 'Strip (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}')
+                                                : S.t('${unit.label}  Â·  TZS ${unit.unitPriceMinor} each', '${unit.label}  Â·  TZS ${unit.unitPriceMinor} moja'),
                                     style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b)),
                                   ),
                                 ),
@@ -1776,6 +1780,12 @@ class _SalesScreenState extends State<SalesScreen> {
                     onChanged: (_) => setDialogState(() {}),
                     decoration: InputDecoration(
                       labelText: S.t('How many ${selected.pluralLabel.toLowerCase()}?', 'Ngapi (${selected.pluralLabel.toLowerCase()})?'),
+                      helperText: selected.toBase == 1 && medicine.effectiveMinSaleQty > 1
+                          ? S.t(
+                              'Minimum ${medicine.minSellCountFor(selected, available)} ${medicine.baseLabel.toLowerCase()}s for this sale.',
+                              'Angalau ${medicine.minSellCountFor(selected, available)} kwa mauzo haya.',
+                            )
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -1789,7 +1799,9 @@ class _SalesScreenState extends State<SalesScreen> {
             actions: [
               TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
               FilledButton(
-                onPressed: n <= 0 ? null : () => Navigator.pop(dialogContext, (selected, n)),
+                onPressed: n < medicine.minSellCountFor(selected, available)
+                    ? null
+                    : () => Navigator.pop(dialogContext, (selected, n)),
                 child: Text(S.t('Add to cart', 'Weka kwenye cart')),
               ),
             ],
@@ -1804,14 +1816,22 @@ class _SalesScreenState extends State<SalesScreen> {
 
   void _addSell(Medicine medicine, SellUnit unit, int sellQty) {
     if (sellQty <= 0) return;
+    final available = _sellableByMedicine[medicine.id] ?? medicine.quantityOnHand;
+    final min = medicine.minSellCountFor(unit, available);
+    if (sellQty < min) {
+      setState(() => _message = S.t(
+            'Sell at least $min ${unit.pluralLabel.toLowerCase()} of ${medicine.name}.',
+            'Uza angalau $min ya ${medicine.name}.',
+          ));
+      return;
+    }
     final key = '${medicine.id}:${unit.id}';
     final existing = _cart[key];
     final nextSell = (existing?.quantity ?? 0) + sellQty;
     final reserved = _reservedBase(medicine.id) - (existing?.baseQuantity ?? 0) + (nextSell * unit.toBase);
-    final available = _sellableByMedicine[medicine.id] ?? medicine.quantityOnHand;
     if (reserved > available) {
       setState(() => _message = available <= 0
-          ? '${medicine.name} is expired or has no sellable stock. Remove it from Medicines → Expired.'
+          ? '${medicine.name} is expired or has no sellable stock. Remove it from Medicines â†’ Expired.'
           : 'Only ${medicine.stockLabel(available)} available.');
       return;
     }
@@ -1873,8 +1893,24 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   void _decreaseCart(SaleCartItem item) {
+    Medicine? medicine;
+    for (final candidate in _latestMedicines) {
+      if (candidate.id == item.medicineId) {
+        medicine = candidate;
+        break;
+      }
+    }
+    final unit = SellUnit(
+      id: item.sellUnitId,
+      label: item.unitName,
+      toBase: item.toBase,
+      unitPriceMinor: item.unitPriceMinor,
+      baseLabel: item.baseLabel,
+    );
+    final available = _sellableByMedicine[item.medicineId] ?? medicine?.quantityOnHand ?? item.baseQuantity;
+    final min = medicine?.minSellCountFor(unit, available) ?? 1;
     setState(() {
-      if (item.quantity <= 1) {
+      if (item.quantity <= min) {
         _cart.remove(item.lineKey);
       } else {
         _cart[item.lineKey] = SaleCartItem(
@@ -1909,8 +1945,8 @@ class _SalesScreenState extends State<SalesScreen> {
   Future<void> _checkout(int total, int discount) async {
     if (!widget.profile.can('sales.create')) {
       setState(() => _message = S.t(
-            'This login can view Sales but cannot complete a sale. Ask admin to tick “Complete a sale”.',
-            'Login hii inaona Sales lakini haiwezi kuhifadhi mauzo. Mwambie admin atike “Kamilisha mauzo”.',
+            'This login can view Sales but cannot complete a sale. Ask admin to tick â€œComplete a saleâ€.',
+            'Login hii inaona Sales lakini haiwezi kuhifadhi mauzo. Mwambie admin atike â€œKamilisha mauzoâ€.',
           ));
       return;
     }
@@ -1953,7 +1989,7 @@ class _SalesScreenState extends State<SalesScreen> {
         discountMinor: appliedDiscount,
         totalMinor: _cart.values.fold<int>(0, (value, item) => value + item.totalMinor) - appliedDiscount,
         createdAt: DateTime.now(),
-        items: _cart.values.map((item) => ReceiptLineItem(name: '${item.medicineName} · ${item.receiptCaption}', quantity: item.quantity, unitPriceMinor: item.unitPriceMinor, totalMinor: item.totalMinor)).toList(),
+        items: _cart.values.map((item) => ReceiptLineItem(name: '${item.medicineName} Â· ${item.receiptCaption}', quantity: item.quantity, unitPriceMinor: item.unitPriceMinor, totalMinor: item.totalMinor)).toList(),
       );
       if (mounted) {
         if (_printerSettings.autoPrintAfterSale) {
@@ -2261,7 +2297,7 @@ class _ProductPicker extends StatelessWidget {
                               Text(
                                 expiry == null
                                     ? '${medicine.stockLabel(remaining)} available'
-                                    : '${medicine.stockLabel(remaining)}  •  ${ExpiryPriority.label(expiry)}',
+                                    : '${medicine.stockLabel(remaining)}  â€¢  ${ExpiryPriority.label(expiry)}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontSize: 12, color: expired || urgent ? const Color(0xffc2410c) : const Color(0xff68807d), fontWeight: expired || urgent ? FontWeight.w700 : FontWeight.w500),
@@ -2308,7 +2344,7 @@ class _CartPanel extends StatelessWidget {
         children: [
           Text(item.medicineName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
           const SizedBox(height: 4),
-          Text('${item.receiptCaption} × TZS ${item.unitPriceMinor}', style: const TextStyle(fontSize: 13.5, color: Color(0xff68807d))),
+          Text('${item.receiptCaption} Ã— TZS ${item.unitPriceMinor}', style: const TextStyle(fontSize: 13.5, color: Color(0xff68807d))),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -2535,7 +2571,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                               purchase.invoiceNumber?.isNotEmpty == true ? purchase.invoiceNumber! : 'Purchase ${purchase.id.substring(0, 6)}',
                               style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xff143230)),
                             ),
-                            subtitle: Text('Supplier: ${purchase.supplierId}  •  ${purchase.status}'),
+                            subtitle: Text('Supplier: ${purchase.supplierId}  â€¢  ${purchase.status}'),
                             trailing: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(color: PhyimacyBrand.cream, borderRadius: BorderRadius.circular(999)),
@@ -3062,7 +3098,7 @@ class _GeneralSettingsView extends StatelessWidget {
         SizedBox(height: 10),
         Text('Set the pharmacy defaults and core business preferences.'),
         SizedBox(height: 18),
-        Text('• Default pricing norms\n• Business profile and branding\n• Working defaults for medicine setup\n• Standard category naming', style: TextStyle(height: 1.8, color: Color(0xff4a5a5d))),
+        Text('â€¢ Default pricing norms\nâ€¢ Business profile and branding\nâ€¢ Working defaults for medicine setup\nâ€¢ Standard category naming', style: TextStyle(height: 1.8, color: Color(0xff4a5a5d))),
       ],
     );
   }
@@ -3080,7 +3116,7 @@ class _SecuritySettingsView extends StatelessWidget {
         SizedBox(height: 10),
         Text('Control who can view, edit, and approve sensitive operations.'),
         SizedBox(height: 18),
-        Text('• Protect stock and financial changes\n• Review access permissions\n• Track user roles and approvals\n• Restrict sensitive actions', style: TextStyle(height: 1.8, color: Color(0xff4a5a5d))),
+        Text('â€¢ Protect stock and financial changes\nâ€¢ Review access permissions\nâ€¢ Track user roles and approvals\nâ€¢ Restrict sensitive actions', style: TextStyle(height: 1.8, color: Color(0xff4a5a5d))),
       ],
     );
   }
@@ -3107,7 +3143,7 @@ class TeamAccessScreen extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
-              onPressed: () => _showCreateProfileDialog(context, service, canManageSuperAdmin: canManageSuperAdmin),
+              onPressed: () => showCreateStaffDialog(context, service: service, canManageSuperAdmin: canManageSuperAdmin),
               icon: const Icon(Icons.person_add_alt_1_rounded),
               label: const Text('Add staff'),
             ),
@@ -3154,7 +3190,7 @@ class TeamAccessScreen extends StatelessWidget {
                       user.role,
                       user.isActive ? 'Active' : 'Inactive',
                       if ((user.pharmacyId ?? '').trim().isNotEmpty) 'Shop linked',
-                    ].join('  •  '),
+                    ].join('  â€¢  '),
                   ),
                   trailing: Wrap(
                     spacing: 4,
@@ -3162,7 +3198,7 @@ class TeamAccessScreen extends StatelessWidget {
                       if ((canManageSuperAdmin && user.id != profile?.id) ||
                           (isShopAdmin && user.id != profile?.id && user.role != 'admin' && user.role != 'super_admin'))
                         FilledButton.tonalIcon(
-                          onPressed: () => _showEditor(context, service, user, canManageSuperAdmin: canManageSuperAdmin),
+                          onPressed: () => showEditStaffDialog(context, service: service, user: user, canManageSuperAdmin: canManageSuperAdmin),
                           icon: const Icon(Icons.tune_rounded, size: 18),
                           label: const Text('Manage'),
                         ),
@@ -3177,7 +3213,7 @@ class TeamAccessScreen extends StatelessWidget {
                           (isShopAdmin && user.id != profile?.id && user.role != 'admin' && user.role != 'super_admin'))
                         IconButton(
                           tooltip: 'Delete profile',
-                          onPressed: () => _deleteProfile(context, service, user),
+                          onPressed: () => confirmDeleteStaffProfile(context, service, user),
                           icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffb42318)),
                         ),
                     ],
@@ -3189,380 +3225,6 @@ class TeamAccessScreen extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  Future<void> _showCreateProfileDialog(BuildContext context, UserManagementService service, {required bool canManageSuperAdmin}) async {
-    final name = TextEditingController();
-    final email = TextEditingController();
-    final password = TextEditingController();
-    final confirmPassword = TextEditingController();
-    final phone = TextEditingController();
-    final employeeCode = TextEditingController();
-    var role = 'pharmacist';
-    var hidePassword = true;
-    var hideConfirm = true;
-    final visiblePermissions = AppPermissions.shopTickList(includeDeveloper: canManageSuperAdmin);
-    final permissions = <String, bool>{
-      for (final permission in visiblePermissions) permission: AppPermissions.resolvedPermissions(role)[permission] == true,
-    };
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => ListenableBuilder(
-        listenable: AppLocale.instance,
-        builder: (context, _) => StatefulBuilder(
-        builder: (context, setState) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: SizedBox(
-            width: 680,
-            height: 640,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(children: [
-                    const Icon(Icons.person_add_alt_1_rounded, color: Color(0xff0f766e)),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(S.t('Add staff', 'Ongeza staff'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xff183b3b)))),
-                    IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
-                  ]),
-                  const SizedBox(height: 8),
-                  Text(
-                    S.t(
-                      'Name, email, and password are required. Phone, staff code, and permissions can be filled now or later.',
-                      'Jina, email, na nenosiri ni lazima. Simu, namba ya staff, na ruhusa unaweza kujaza sasa au baadaye.',
-                    ),
-                    style: const TextStyle(fontSize: 13, color: Color(0xff68807d), height: 1.35),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          TextField(controller: name, decoration: InputDecoration(labelText: S.t('Full name', 'Jina kamili'))),
-                          const SizedBox(height: 10),
-                          TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: S.t('Email', 'Email'))),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: password,
-                            obscureText: hidePassword,
-                            decoration: passwordInputDecoration(
-                              label: S.t('Password', 'Nenosiri'),
-                              hidden: hidePassword,
-                              onToggle: () => setState(() => hidePassword = !hidePassword),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: confirmPassword,
-                            obscureText: hideConfirm,
-                            decoration: passwordInputDecoration(
-                              label: S.t('Confirm password', 'Thibitisha nenosiri'),
-                              hidden: hideConfirm,
-                              onToggle: () => setState(() => hideConfirm = !hideConfirm),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: phone,
-                            keyboardType: TextInputType.phone,
-                            decoration: InputDecoration(labelText: S.t('Phone (optional)', 'Simu (si lazima)')),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: employeeCode,
-                            decoration: InputDecoration(labelText: S.t('Staff code (optional)', 'Namba ya staff (si lazima)')),
-                          ),
-                          const SizedBox(height: 10),
-                          DropdownButtonFormField<String>(
-                            initialValue: role,
-                            decoration: InputDecoration(labelText: S.t('Role', 'Wajibu')),
-                            items: [
-                              DropdownMenuItem(value: 'pharmacist', child: Text(S.t('Pharmacist', 'Pharmacist'))),
-                              DropdownMenuItem(value: 'cashier', child: Text(S.t('Cashier', 'Cashier'))),
-                              DropdownMenuItem(value: 'storekeeper', child: Text(S.t('Storekeeper', 'Storekeeper'))),
-                            ],
-                            onChanged: (value) => setState(() {
-                              role = value ?? role;
-                              for (final permission in visiblePermissions) {
-                                permissions[permission] = AppPermissions.resolvedPermissions(role)[permission] == true;
-                              }
-                            }),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(S.t('Permissions', 'Ruhusa'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xff0f766e))),
-                          const SizedBox(height: 4),
-                          Text(
-                            S.t(
-                              'Tick jobs now if you want. You can change them later from Manage.',
-                              'Tiki kazi sasa ukitaka. Unaweza kubadilisha baadaye kwenye Manage.',
-                            ),
-                            style: const TextStyle(fontSize: 12, color: Color(0xff68807d)),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 3,
-                            children: [
-                              for (final permission in visiblePermissions)
-                                SizedBox(
-                                  width: 310,
-                                  child: CheckboxListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    dense: true,
-                                    title: Text(
-                                      AppLocale.instance.isSw ? AppPermissions.labelSw(permission) : AppPermissions.labelEn(permission),
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                    ),
-                                    subtitle: Text(permission, style: const TextStyle(fontSize: 10, color: Color(0xff879895))),
-                                    value: permissions[permission] == true,
-                                    onChanged: (value) => setState(() => permissions[permission] = value ?? false),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
-                      const SizedBox(width: 10),
-                      FilledButton(
-                        onPressed: () async {
-                          try {
-                            if (password.text != confirmPassword.text) {
-                              throw StateError(S.t('Password and confirm password must match.', 'Nenosiri na uthibitisho havifanani.'));
-                            }
-                            await service.createLoginAndProfile(
-                              displayName: name.text,
-                              email: email.text,
-                              password: password.text,
-                              phone: phone.text,
-                              employeeCode: employeeCode.text,
-                              role: role,
-                              permissions: permissions,
-                              isActive: true,
-                              pharmacyId: TenantContext.instance.pharmacyId,
-                            );
-                            if (dialogContext.mounted) Navigator.pop(dialogContext);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(S.t('Staff login created for this pharmacy.', 'Login ya staff imeundwa kwa duka hili.'))),
-                              );
-                            }
-                          } catch (error) {
-                            final message = '$error'.replaceFirst('Exception: ', '').replaceFirst('Bad state: ', '');
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-                            }
-                          }
-                        },
-                        child: Text(S.t('Create login', 'Tengeneza login')),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        ),
-      ),
-    );
-    name.dispose();
-    email.dispose();
-    password.dispose();
-    confirmPassword.dispose();
-    phone.dispose();
-    employeeCode.dispose();
-  }
-
-  Future<void> _deleteProfile(BuildContext context, UserManagementService service, UserProfile user) async {
-    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Delete profile?'), content: Text('Remove ${user.displayName} from the Firestore users collection? This does not delete the Firebase Auth account.'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete'))]));
-    if (confirmed == true) await service.deleteProfile(user.id);
-  }
-
-  Future<void> _showEditor(BuildContext context, UserManagementService service, UserProfile user, {required bool canManageSuperAdmin}) async {
-    var role = user.role;
-    var isActive = user.isActive;
-    String? selectedPharmacyId = user.pharmacyId ?? TenantContext.instance.pharmacyId;
-    final name = TextEditingController(text: user.displayName);
-    final email = TextEditingController(text: user.email);
-    final phone = TextEditingController(text: user.phone ?? '');
-    final employeeCode = TextEditingController(text: user.employeeCode);
-    final visiblePermissions = AppPermissions.shopTickList(includeDeveloper: canManageSuperAdmin);
-    final permissions = <String, bool>{
-      for (final permission in visiblePermissions) permission: user.can(permission),
-    };
-    try {
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => StatefulBuilder(builder: (context, setState) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: SizedBox(
-            width: 680,
-            height: 640,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(children: [
-                    const Icon(Icons.manage_accounts_outlined, color: Color(0xffbe185d)),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text('Manage ${user.displayName}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xff183b3b)))),
-                    IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
-                  ]),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          TextField(controller: name, decoration: const InputDecoration(labelText: 'Full name')),
-                          const SizedBox(height: 10),
-                          TextField(controller: email, decoration: const InputDecoration(labelText: 'Email')),
-                          const SizedBox(height: 10),
-                          TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: S.t('Phone (optional)', 'Simu (si lazima)'))),
-                          const SizedBox(height: 10),
-                          TextField(controller: employeeCode, decoration: InputDecoration(labelText: S.t('Staff code (optional)', 'Namba ya staff (si lazima)'))),
-                          if (canManageSuperAdmin) ...[
-                            const SizedBox(height: 10),
-                            StreamBuilder<List<PharmacyRecord>>(
-                              stream: PharmacyService().watchPharmacies(),
-                              builder: (context, snapshot) {
-                                final pharmacies = snapshot.data ?? const <PharmacyRecord>[];
-                                return DropdownButtonFormField<String>(
-                                  initialValue: pharmacies.any((pharmacy) => pharmacy.id == selectedPharmacyId) ? selectedPharmacyId : null,
-                                  decoration: const InputDecoration(labelText: 'Pharmacy'),
-                                  items: [
-                                    for (final pharmacy in pharmacies)
-                                      DropdownMenuItem(value: pharmacy.id, child: Text(pharmacy.name)),
-                                  ],
-                                  onChanged: (value) => setState(() => selectedPharmacyId = value),
-                                );
-                              },
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          Row(children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                initialValue: role,
-                                decoration: const InputDecoration(labelText: 'Role'),
-                                items: [
-                                  if (canManageSuperAdmin || user.role == 'super_admin') const DropdownMenuItem(value: 'super_admin', child: Text('Super admin')),
-                                  if (canManageSuperAdmin || user.role == 'admin') const DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                                  const DropdownMenuItem(value: 'pharmacist', child: Text('Pharmacist')),
-                                  const DropdownMenuItem(value: 'cashier', child: Text('Cashier')),
-                                  const DropdownMenuItem(value: 'storekeeper', child: Text('Storekeeper')),
-                                ],
-                                onChanged: user.role == 'admin' || user.role == 'super_admin'
-                                    ? null
-                                    : (value) => setState(() => role = value ?? role),
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: SwitchListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('Account active'),
-                                value: isActive,
-                                onChanged: (value) => setState(() => isActive = value),
-                              ),
-                            ),
-                          ]),
-                          const SizedBox(height: 16),
-                          Text(S.t('Permissions', 'Ruhusa'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xff0f766e))),
-                          const SizedBox(height: 4),
-                          Text(
-                            S.t(
-                              'Tick every job this person may do. The full list is shown — nothing is hidden.',
-                              'Tiki kila kazi mtu huyu anaruhusiwa. Orodha yote inaonekana — hakuna iliyofichwa.',
-                            ),
-                            style: const TextStyle(fontSize: 12, color: Color(0xff68807d)),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 3,
-                            children: [
-                              for (final permission in visiblePermissions)
-                                SizedBox(
-                                  width: 310,
-                                  child: CheckboxListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    dense: true,
-                                    title: Text(
-                                      AppLocale.instance.isSw
-                                          ? AppPermissions.labelSw(permission)
-                                          : AppPermissions.labelEn(permission),
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                    ),
-                                    subtitle: Text(permission, style: const TextStyle(fontSize: 10, color: Color(0xff879895))),
-                                    value: permissions[permission] == true,
-                                    onChanged: (value) => setState(() => permissions[permission] = value ?? false),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-                      const SizedBox(width: 10),
-                      FilledButton.icon(
-                        onPressed: () async {
-                          try {
-                            await service.updateProfileDetails(
-                              userId: user.id,
-                              displayName: name.text,
-                              email: email.text,
-                              phone: phone.text,
-                              employeeCode: employeeCode.text,
-                              role: role,
-                              permissions: permissions,
-                              isActive: isActive,
-                              pharmacyId: selectedPharmacyId,
-                            );
-                            if (dialogContext.mounted) Navigator.pop(dialogContext);
-                          } catch (error) {
-                            if (dialogContext.mounted) {
-                              final detail = '$error';
-                              final message = detail.contains('permission-denied')
-                                  ? 'Could not save this staff login. Sign out, sign in again, then retry. If it continues, publish Firestore rules.'
-                                  : detail;
-                              ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text(message)));
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.save_outlined, size: 18),
-                        label: const Text('Save user'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        )),
-      );
-    } finally {
-      name.dispose();
-      email.dispose();
-      phone.dispose();
-      employeeCode.dispose();
-    }
   }
 }
 
@@ -3685,7 +3347,7 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
       _busy = true;
       _importDone = 0;
       _importTotal = validRows.length;
-      _lastImportMessage = 'Importing ${validRows.length} medicines…';
+      _lastImportMessage = 'Importing ${validRows.length} medicinesâ€¦';
     });
 
     try {
@@ -3713,7 +3375,7 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
           setState(() {
             _importDone = done;
             _importTotal = total;
-            _lastImportMessage = 'Importing $done of $total…';
+            _lastImportMessage = 'Importing $done of $totalâ€¦';
           });
         },
       );
@@ -4443,7 +4105,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                 children: [
                   ListTile(
                     leading: const Icon(Icons.event_busy_rounded, color: Color(0xffc2410c)),
-                    title: Text('${expired.length} expired items  •  $units units'),
+                    title: Text('${expired.length} expired items  â€¢  $units units'),
                     subtitle: const Text('Remove them from stock. The quantity is recorded as an expiry write-off.'),
                     trailing: widget.profile.can('inventory.adjust')
                         ? FilledButton(
@@ -4466,7 +4128,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               line.sku,
                               if (line.batchNumber != null && line.batchNumber!.isNotEmpty) 'Batch ${line.batchNumber}',
                               ExpiryPriority.label(line.expiry),
-                            ].where((part) => part.isNotEmpty).join('  •  '),
+                            ].where((part) => part.isNotEmpty).join('  â€¢  '),
                           ),
                           trailing: Wrap(
                             spacing: 10,
@@ -4580,7 +4242,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         medicine.stockLabel(),
                         if (medicine.sellsLoose) 'Loose sale on',
                         if (statusExpiry != null) ExpiryPriority.label(statusExpiry),
-                      ].join('  •  '),
+                      ].join('  â€¢  '),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -4626,6 +4288,11 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     final packSize = TextEditingController(text: medicine == null ? '20' : '${medicine.packSize}');
     final stripSize = TextEditingController(text: medicine == null || medicine.stripSize <= 0 ? '' : '${medicine.stripSize}');
     final boxSize = TextEditingController(text: medicine == null || medicine.boxSize <= 0 ? '' : '${medicine.boxSize}');
+    final minSaleQty = TextEditingController(
+      text: medicine == null
+          ? '5'
+          : '${medicine.effectiveMinSaleQty}',
+    );
     String? selectedCategoryId = medicine?.categoryId;
     var prescription = medicine?.requiresPrescription ?? false;
     var baseUnit = BaseUnits.normalize(medicine?.unit ?? 'Tablet');
@@ -4814,13 +4481,22 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             );
                           }
                           return S.t(
-                            'One piece = TZS ${(price / pack).round()}. On Sales pick tablet or pack — no Edit needed.',
-                            'Kidonge kimoja = TZS ${(price / pack).round()}. Kwenye Sales chagua kidonge au pakiti — hakuna Edit.',
+                            'One piece = TZS ${(price / pack).round()}. On Sales pick tablet or pack â€” no Edit needed.',
+                            'Kidonge kimoja = TZS ${(price / pack).round()}. Kwenye Sales chagua kidonge au pakiti â€” hakuna Edit.',
                           );
                         }(),
                         style: const TextStyle(color: Color(0xff0f766e), height: 1.35),
                       ),
                       const SizedBox(height: 10),
+                      if ((int.tryParse(packSize.text.trim()) ?? 1) > 1)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _numberField(
+                            minSaleQty,
+                            S.t('Minimum tablets per sale (e.g. 5)', 'Vidonge vichache kabisa kwa mauzo (mf. 5)'),
+                            icon: Icons.filter_5_rounded,
+                          ),
+                        ),
                       Row(children: [
                         Expanded(child: TextFormField(controller: stripSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Strip size (optional)', 'Ukubwa wa strip (si lazima)'), helperText: S.t('e.g. 10', 'mf. 10'), prefixIcon: const Icon(Icons.view_week_outlined, size: 19)))),
                         const SizedBox(width: 12),
@@ -4902,6 +4578,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               packSize: int.parse(packSize.text),
                               stripSize: int.tryParse(stripSize.text.trim()) ?? 0,
                               boxSize: int.tryParse(boxSize.text.trim()) ?? 0,
+                              minSaleQty: int.tryParse(minSaleQty.text.trim()) ?? 0,
                               allowLooseSale: int.parse(packSize.text) > 1,
                               expiryDate: expiryDate,
                             );
@@ -4919,6 +4596,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               packSize: int.parse(packSize.text),
                               stripSize: int.tryParse(stripSize.text.trim()) ?? 0,
                               boxSize: int.tryParse(boxSize.text.trim()) ?? 0,
+                              minSaleQty: int.tryParse(minSaleQty.text.trim()) ?? 0,
                               allowLooseSale: int.parse(packSize.text) > 1,
                               expiryDate: expiryDate,
                               openingQuantity: qty,
@@ -4964,6 +4642,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     packSize.dispose();
     stripSize.dispose();
     boxSize.dispose();
+    minSaleQty.dispose();
   }
 
   Future<bool> _showAddCategoryDialog(BuildContext context, MedicineService service) async {
@@ -5287,7 +4966,7 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
-                              widget.subscription.isTrial ? 'Trial ended · subscribe to continue' : 'Subscription required',
+                              widget.subscription.isTrial ? 'Trial ended Â· subscribe to continue' : 'Subscription required',
                               style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w800),
                             ),
                           ),

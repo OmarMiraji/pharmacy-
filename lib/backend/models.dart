@@ -24,6 +24,7 @@ class Medicine {
     this.stripSize = 0,
     this.boxSize = 0,
     this.allowLooseSale = false,
+    this.minSaleQty = 0,
     this.createdAt,
     this.updatedAt,
   });
@@ -47,6 +48,7 @@ class Medicine {
   final int stripSize;
   final int boxSize;
   final bool allowLooseSale;
+  final int minSaleQty;
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
 
@@ -62,6 +64,19 @@ class Medicine {
   }
 
   int get piecesPerPack => packSize < 1 ? 1 : packSize;
+
+  int get effectiveMinSaleQty {
+    if (minSaleQty > 0) return minSaleQty;
+    if (canSellPiecesByType && piecesPerPack > 1) return 5;
+    return 1;
+  }
+
+  int minSellCountFor(SellUnit unit, int availableBase) {
+    if (unit.toBase != 1) return 1;
+    final min = effectiveMinSaleQty;
+    if (availableBase > 0 && availableBase < min) return availableBase;
+    return min;
+  }
 
   int get piecePriceMinor {
     if (piecesPerPack <= 1) return sellingPriceMinor;
@@ -155,6 +170,7 @@ class Medicine {
       stripSize: (data['stripSize'] as num?)?.toInt() ?? 0,
       boxSize: (data['boxSize'] as num?)?.toInt() ?? 0,
       allowLooseSale: data['allowLooseSale'] == true,
+      minSaleQty: (data['minSaleQty'] as num?)?.toInt() ?? 0,
       createdAt: data['createdAt'] as Timestamp?,
       updatedAt: data['updatedAt'] as Timestamp?,
     );
@@ -181,6 +197,7 @@ class Medicine {
       stripSize: stripSize,
       boxSize: boxSize,
       allowLooseSale: allowLooseSale,
+      minSaleQty: minSaleQty,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );
@@ -205,6 +222,7 @@ class Medicine {
         'stripSize': stripSize,
         'boxSize': boxSize,
         'allowLooseSale': allowLooseSale,
+        'minSaleQty': minSaleQty,
       };
 }
 

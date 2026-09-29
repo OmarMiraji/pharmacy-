@@ -266,22 +266,31 @@ class AppUpdateService {
       throw StateError('The package does not contain PharmSpecio.exe.');
     }
 
-    onProgress(0.88, 'PharmSpecio will close and reopen with the new version...');
+    onProgress(0.88, 'Windows may ask for permission. Click Yes, then PharmSpecio will close and reopen...');
     final script = File('${work.path}${Platform.pathSeparator}apply.ps1');
     script.writeAsStringSync(_updaterScript(
       appPid: pid,
       payloadDir: exe.parent.path,
       installDir: installDir.path,
-      restartExe: '${installDir.path}${Platform.pathSeparator}PharmSpecio.exe',
     ));
 
-    await Process.start(
+    final fileArg = script.path.replaceAll("'", "''");
+    final elevate = await Process.run(
       'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script.path],
-      mode: ProcessStartMode.detached,
-      runInShell: false,
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        "Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','$fileArg'",
+      ],
     );
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (elevate.exitCode != 0) {
+      throw StateError(
+        'Update was cancelled or needs Administrator. Click Yes on the Windows prompt, or install PharmSpecio-Setup on this PC once.',
+      );
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 500));
     exit(0);
   }
 
@@ -390,31 +399,50 @@ class AppUpdateService {
     required int appPid,
     required String payloadDir,
     required String installDir,
-    required String restartExe,
   }) {
     String q(String value) => "'${value.replaceAll("'", "''")}'";
     return '''
 \$ErrorActionPreference = 'Continue'
+\$log = Join-Path \$env:TEMP 'pharmspecio-update.log'
+function Log(\$m) { Add-Content -Path \$log -Value ("\$(Get-Date -Format o) \$m") }
 \$appPid = $appPid
 \$src = ${q(payloadDir)}
 \$dest = ${q(installDir)}
-\$exe = ${q(restartExe)}
-for (\$i = 0; \$i -lt 40; \$i++) {
+Log "start pid=\$appPid src=\$src dest=\$dest"
+for (\$i = 0; \$i -lt 80; \$i++) {
   if (-not (Get-Process -Id \$appPid -ErrorAction SilentlyContinue)) { break }
   Start-Sleep -Milliseconds 250
 }
-Start-Sleep -Seconds 1
-for (\$i = 0; \$i -lt 20; \$i++) {
+Get-Process -Name 'PharmSpecio','Phyimacy','phyimacy' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+Get-ChildItem -Path \$dest -File -ErrorAction SilentlyContinue | Where-Object { \$_.Extension -in '.exe','.dll' } | ForEach-Object {
+  try {
+    Rename-Item -Path \$_.FullName -NewName (\$_.Name + '.bak') -Force -ErrorAction Stop
+  } catch {}
+}
+\$copied = \$false
+if (Get-Command robocopy -ErrorAction SilentlyContinue) {
+  \$p = Start-Process -FilePath robocopy.exe -ArgumentList @(\$src, \$dest, '/E', '/IS', '/IT', '/R:8', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS') -Wait -PassThru -NoNewWindow
+  if (\$p.ExitCode -le 7) { \$copied = \$true; Log "robocopy \$(\$p.ExitCode)" }
+}
+if (-not \$copied) {
   try {
     Copy-Item -Path (Join-Path \$src '*') -Destination \$dest -Recurse -Force -ErrorAction Stop
-    break
+    \$copied = \$true
+    Log 'copy-item ok'
   } catch {
-    Start-Sleep -Seconds 1
+    Log "copy-item failed: \$_"
   }
 }
-if (Test-Path \$exe) {
-  Start-Process -FilePath \$exe
+Get-ChildItem -Path \$dest -Filter '*.bak' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+\$exe = Join-Path \$dest 'PharmSpecio.exe'
+if (-not (Test-Path \$exe)) { \$exe = Join-Path \$dest 'Phyimacy.exe' }
+if (-not \$copied -or -not (Test-Path \$exe)) {
+  Log 'update failed; leaving existing install'
+  exit 1
 }
+Start-Process -FilePath \$exe -WorkingDirectory \$dest
+Log 'restarted'
 ''';
   }
 }
