@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../backend/auth_service.dart';
+import '../backend/payment_service.dart';
 import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/subscription_service.dart';
@@ -13,10 +12,15 @@ import '../backend/user_profile.dart';
 import '../theme/brand.dart';
 import '../l10n/app_locale.dart';
 import '../widgets/language_toggle.dart';
+import 'announcements_admin_screen.dart';
 import 'app_update_screen.dart';
+import 'audit_logs_screen.dart';
 import 'chat_assistant_panel.dart';
+import 'customers_console_screen.dart';
 import 'password_security.dart';
+import 'payments_admin_screen.dart';
 import 'pharmacy_workspace_settings_screen.dart';
+import 'security_center_screen.dart';
 import 'subscription_admin_screen.dart';
 import 'support_directory_screen.dart';
 
@@ -30,25 +34,53 @@ class SuperAdminHome extends StatefulWidget {
   State<SuperAdminHome> createState() => _SuperAdminHomeState();
 }
 
-class _SuperAdminHomeState extends State<SuperAdminHome> {
-  int _index = 0;
+class _NavDest {
+  const _NavDest(this.id, this.label, this.icon);
+  final String id;
+  final String label;
+  final IconData icon;
+}
 
-  static const _items = [
-    ('Customers', Icons.groups_rounded),
-    ('Shops', Icons.storefront_rounded),
-    ('Licenses', Icons.workspace_premium_rounded),
-    ('Logins', Icons.manage_accounts_outlined),
-    ('Support data', Icons.storage_rounded),
-    ('App updates', Icons.system_update_alt_rounded),
-    ('Password', Icons.lock_reset_rounded),
-  ];
+class _NavSection {
+  const _NavSection(this.title, this.items);
+  final String title;
+  final List<_NavDest> items;
+}
+
+class _SuperAdminHomeState extends State<SuperAdminHome> {
+  String _id = 'dashboard';
+
+  List<_NavSection> get _sections => [
+        _NavSection('OVERVIEW', [
+          _NavDest('dashboard', S.t('Dashboard', 'Dashibodi'), Icons.dashboard_rounded),
+        ]),
+        _NavSection('CUSTOMERS', [
+          _NavDest('customers', S.t('Customers', 'Wateja'), Icons.groups_rounded),
+          _NavDest('shops', S.t('Pharmacies / Shops', 'Maduka'), Icons.storefront_rounded),
+          _NavDest('users', S.t('Users & Logins', 'Watumiaji'), Icons.manage_accounts_outlined),
+        ]),
+        _NavSection('LICENSING', [
+          _NavDest('licenses', S.t('Licenses', 'Leseni'), Icons.workspace_premium_rounded),
+          _NavDest('payments', S.t('Payments', 'Malipo'), Icons.payments_outlined),
+        ]),
+        _NavSection('SYSTEM', [
+          _NavDest('support', S.t('Support data', 'Data ya msaada'), Icons.storage_rounded),
+          _NavDest('audit', S.t('Audit logs', 'Audit'), Icons.receipt_long_rounded),
+          _NavDest('security', S.t('Security', 'Usalama'), Icons.shield_outlined),
+        ]),
+        _NavSection('UPDATES', [
+          _NavDest('updates', S.t('App updates', 'Updates'), Icons.system_update_alt_rounded),
+          _NavDest('announcements', S.t('Announcements', 'Matangazo'), Icons.campaign_outlined),
+        ]),
+      ];
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: AppLocale.instance,
       builder: (context, _) {
-        final selected = _items[_index.clamp(0, _items.length - 1)];
+        final destinations = [for (final section in _sections) ...section.items];
+        final selected = destinations.firstWhere((item) => item.id == _id, orElse: () => destinations.first);
         return Scaffold(
       backgroundColor: PhyimacyBrand.cream,
       body: Stack(
@@ -73,49 +105,49 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
                         const SizedBox(height: 10),
                         Container(width: 40, height: 3, decoration: BoxDecoration(color: PhyimacyBrand.gold, borderRadius: BorderRadius.circular(8))),
                         const SizedBox(height: 10),
-                        Text('System support', style: GoogleFonts.inter(color: Colors.white.withValues(alpha: 0.78), fontSize: 13.5)),
+                        Text(S.t('System control', 'Udhibiti wa mfumo'), style: GoogleFonts.inter(color: Colors.white.withValues(alpha: 0.78), fontSize: 13.5)),
                       ],
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(22, 8, 22, 10),
-                    child: Text('CONSOLE', style: GoogleFonts.inter(color: PhyimacyBrand.gold.withValues(alpha: 0.85), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.8)),
-                  ),
                   Expanded(
-                    child: ListView.builder(
+                    child: ListView(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-                      itemCount: _items.length,
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        final active = _index == index;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () => setState(() => _index = index),
-                              borderRadius: BorderRadius.circular(16),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                                decoration: BoxDecoration(
-                                  color: active ? Colors.white.withValues(alpha: 0.14) : Colors.transparent,
+                      children: [
+                        for (final section in _sections) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 12, 8, 6),
+                            child: Text(section.title, style: GoogleFonts.inter(color: PhyimacyBrand.gold.withValues(alpha: 0.85), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.8)),
+                          ),
+                          for (final item in section.items)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => setState(() => _id = item.id),
                                   borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(item.$2, color: Colors.white, size: 24),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(item.$1, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15.5)),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: _id == item.id ? Colors.white.withValues(alpha: 0.14) : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(16),
                                     ),
-                                  ],
+                                    child: Row(
+                                      children: [
+                                        Icon(item.icon, color: Colors.white, size: 22),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(item.label, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                        ],
+                      ],
                     ),
                   ),
                   Padding(
@@ -171,8 +203,11 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(selected.$1, style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink, height: 1.1)),
-                            Text('Support the shops that use PharmSpecio', style: GoogleFonts.inter(fontSize: 12, color: PhyimacyBrand.muted)),
+                            Text(selected.label, style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink, height: 1.1)),
+                            Text(
+                              '${S.t('Logged in as', 'Umeingia kama')} ${widget.profile.email} · Super Admin',
+                              style: GoogleFonts.inter(fontSize: 12, color: PhyimacyBrand.muted),
+                            ),
                           ],
                         ),
                       ),
@@ -185,9 +220,7 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-                    child: selected.$1 == 'Logins' || selected.$1 == 'Customers' || selected.$1 == 'Shops'
-                        ? _body(selected.$1)
-                        : SingleChildScrollView(child: _body(selected.$1)),
+                    child: _page(selected.id),
                   ),
                 ),
               ],
@@ -203,20 +236,36 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
     );
   }
 
-  Widget _body(String label) {
-    switch (label) {
-      case 'Shops':
+  Widget _page(String id) {
+    final child = _body(id);
+    if (id == 'licenses' || id == 'updates' || id == 'support') {
+      return SingleChildScrollView(child: child);
+    }
+    return child;
+  }
+
+  Widget _body(String id) {
+    switch (id) {
+      case 'customers':
+        return const CustomersConsoleScreen();
+      case 'shops':
         return SupportDirectoryScreen(profile: widget.profile, initialTab: 0);
-      case 'Licenses':
-        return SubscriptionAdminScreen(profile: widget.profile);
-      case 'Logins':
+      case 'users':
         return SupportDirectoryScreen(profile: widget.profile, initialTab: 1);
-      case 'Support data':
+      case 'licenses':
+        return SubscriptionAdminScreen(profile: widget.profile);
+      case 'payments':
+        return const PaymentsAdminScreen();
+      case 'support':
         return PharmacyWorkspaceSettingsScreen(profile: widget.profile);
-      case 'App updates':
+      case 'audit':
+        return const AuditLogsScreen();
+      case 'security':
+        return const SecurityCenterScreen();
+      case 'updates':
         return AppUpdateScreen(profile: widget.profile);
-      case 'Password':
-        return PasswordSettingsView(profile: widget.profile);
+      case 'announcements':
+        return const AnnouncementsAdminScreen();
       default:
         return _CustomerDashboard(profile: widget.profile);
     }
@@ -248,6 +297,9 @@ class _CustomerDashboard extends StatelessWidget {
         return StreamBuilder<List<UserProfile>>(
           stream: UserManagementService().watchUsers(),
           builder: (context, userSnap) {
+            return StreamBuilder<List<LicensePayment>>(
+              stream: PaymentService().watch(),
+              builder: (context, paySnap) {
             if (shopSnap.connectionState == ConnectionState.waiting && !shopSnap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -263,19 +315,21 @@ class _CustomerDashboard extends StatelessWidget {
               );
             }
             final shops = shopSnap.data ?? const <PharmacyRecord>[];
-            final users = (userSnap.data ?? const <UserProfile>[]).where((user) => !user.isSuperAdmin).toList();
+            final users = userSnap.data ?? const <UserProfile>[];
             try {
-              return _dashboardBody(shops, users);
+              return _dashboardBody(shops, users, paySnap.data ?? const <LicensePayment>[]);
             } catch (_) {
               return const Center(child: Text('Could not draw the customer dashboard. Open Shops to work with pharmacies.'));
             }
+              },
+            );
           },
         );
       },
     );
   }
 
-  Widget _dashboardBody(List<PharmacyRecord> shops, List<UserProfile> users) {
+  Widget _dashboardBody(List<PharmacyRecord> shops, List<UserProfile> users, List<LicensePayment> payments) {
             final staffByShop = <String, int>{};
             for (final user in users) {
               final id = (user.pharmacyId ?? '').trim();
@@ -283,7 +337,7 @@ class _CustomerDashboard extends StatelessWidget {
               staffByShop[id] = (staffByShop[id] ?? 0) + 1;
             }
 
-            var trials = 0, paid = 0, locked = 0, viewOnly = 0, endingSoon = 0;
+            var trials = 0, paid = 0, locked = 0, viewOnly = 0, endingSoon = 0, expired = 0;
             for (final shop in shops) {
               final license = SubscriptionService.licenseFromPharmacy(shop);
               if (license.isBlocked) {
@@ -295,10 +349,12 @@ class _CustomerDashboard extends StatelessWidget {
               } else {
                 paid++;
               }
+              if (license.hasExpired) expired++;
               if (license.canWrite && license.daysRemaining > 0 && license.daysRemaining <= 7) {
                 endingSoon++;
               }
             }
+            final pendingPay = payments.where((row) => row.status == 'pending').length;
             final greeting = profile.displayName.trim().isEmpty
                 ? 'there'
                 : profile.displayName.trim().split(RegExp(r'\s+')).first;
@@ -340,15 +396,36 @@ class _CustomerDashboard extends StatelessWidget {
                       spacing: 12,
                       runSpacing: 12,
                       children: [
-                        card('Shops', '${shops.length}', 'Customer pharmacies', Icons.storefront_rounded, const Color(0xffdff7ee)),
+                        card('Active pharmacies', '${shops.length - locked}', 'Not locked', Icons.storefront_rounded, const Color(0xffdff7ee)),
+                        card('Expired', '$expired', 'Need a new token', Icons.event_busy_rounded, const Color(0xffffeadf)),
                         card('On trial', '$trials', 'Can still enter data', Icons.hourglass_bottom_rounded, const Color(0xffe8f1ff)),
+                        card('Pending payments', '$pendingPay', 'Verify then grant license', Icons.payments_outlined, const Color(0xfffff0d7)),
                         card('Paid active', '$paid', 'Full access', Icons.verified_rounded, const Color(0xffdff7ee)),
-                        card('Need you', '${locked + viewOnly + endingSoon}', '$endingSoon ending · $locked locked · $viewOnly view only', Icons.support_agent_rounded, const Color(0xffffeadf)),
                         card('Shop logins', '${users.length}', 'Admins and staff across shops', Icons.groups_rounded, const Color(0xfff2e7ff)),
-                        card('Unlinked logins', '${users.where((user) => (user.pharmacyId ?? '').trim().isEmpty).length}', 'Login exists but no shop', Icons.link_off_rounded, const Color(0xfffff0d7)),
                       ],
                     );
                   },
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [BoxShadow(color: Color(0x14073B3A), blurRadius: 18, offset: Offset(0, 8))],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Subscription alerts', style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
+                      const SizedBox(height: 8),
+                      Text('⚠ $endingSoon pharmacies expire within 7 days'),
+                      Text('⚠ $pendingPay pending payments to verify'),
+                      Text('⚠ $locked pharmacies are locked'),
+                      Text('⚠ $viewOnly paid shops are view-only after expiry'),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 18),
                 Container(
@@ -400,8 +477,60 @@ class _CustomerDashboard extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [BoxShadow(color: Color(0x14073B3A), blurRadius: 18, offset: Offset(0, 8))],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(S.t('Logins', 'Login'), style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
+                      const SizedBox(height: 8),
+                      if (users.isEmpty)
+                        Text(S.t('No logins in Firebase yet.', 'Bado hakuna login kwenye Firebase.'))
+                      else
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            headingTextStyle: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 12, color: PhyimacyBrand.ink),
+                            columns: [
+                              DataColumn(label: Text(S.t('Name', 'Jina'))),
+                              DataColumn(label: Text(S.t('Email / login', 'Email / login'))),
+                              DataColumn(label: Text(S.t('Role', 'Wajibu'))),
+                              DataColumn(label: Text(S.t('Shop', 'Duka'))),
+                              DataColumn(label: Text(S.t('Status', 'Hali'))),
+                            ],
+                            rows: [
+                              for (final user in users)
+                                DataRow(
+                                  cells: [
+                                    DataCell(Text(user.displayName.isEmpty ? '—' : user.displayName)),
+                                    DataCell(Text(user.email)),
+                                    DataCell(Text(user.isSuperAdmin ? 'super admin' : user.role)),
+                                    DataCell(Text(_loginShopLabel(user, shops))),
+                                    DataCell(Text(user.isActive ? S.t('Active', 'Hai') : S.t('Disabled', 'Imefungwa'))),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ],
             );
+  }
+
+  String _loginShopLabel(UserProfile user, List<PharmacyRecord> shops) {
+    for (final shop in shops) {
+      if (shop.id == user.pharmacyId) return shop.name;
+    }
+    if (user.isSuperAdmin) return 'System';
+    return '—';
   }
 
   Widget _metric(String label, String value, String note, IconData icon, Color color) {
@@ -420,113 +549,6 @@ class _CustomerDashboard extends StatelessWidget {
           Text(note, style: GoogleFonts.inter(color: PhyimacyBrand.muted, fontSize: 12, height: 1.3)),
         ],
       ),
-    );
-  }
-}
-
-class _SupportLoginsView extends StatefulWidget {
-  const _SupportLoginsView({required this.profile});
-
-  final UserProfile profile;
-
-  @override
-  State<_SupportLoginsView> createState() => _SupportLoginsViewState();
-}
-
-class _SupportLoginsViewState extends State<_SupportLoginsView> {
-  final _search = TextEditingController();
-  Timer? _searchDebounce;
-  String _query = '';
-
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    _search.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<PharmacyRecord>>(
-      stream: PharmacyService().watchPharmacies(),
-      builder: (context, shopSnap) {
-        final names = {for (final shop in shopSnap.data ?? const <PharmacyRecord>[]) shop.id: shop.name};
-        return StreamBuilder<List<UserProfile>>(
-          stream: UserManagementService().watchUsers(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) return Text('Could not load logins: ${snapshot.error}');
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-            final query = _query;
-            final users = snapshot.data!.where((user) {
-              if (user.isSuperAdmin) return false;
-              if (query.isEmpty) return true;
-              final shop = names[user.pharmacyId ?? ''] ?? '';
-              return user.displayName.toLowerCase().contains(query) ||
-                  user.email.toLowerCase().contains(query) ||
-                  shop.toLowerCase().contains(query);
-            }).toList();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('Help a shop login. You can disable an account or set a password. You do not sell or receive stock from here.', style: TextStyle(color: Color(0xff68807d), height: 1.4)),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _search,
-                  onChanged: (_) {
-                    _searchDebounce?.cancel();
-                    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
-                      if (!mounted) return;
-                      setState(() => _query = _search.text.trim().toLowerCase());
-                    });
-                  },
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search name, email, or shop'),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    child: users.isEmpty
-                        ? const Center(child: Text('No matching logins.'))
-                        : ListView.separated(
-                            itemCount: users.length,
-                            separatorBuilder: (_, index) => const Divider(height: 1, indent: 18),
-                            itemBuilder: (context, index) {
-                              final user = users[index];
-                              final shop = names[user.pharmacyId ?? ''] ?? ((user.pharmacyId ?? '').trim().isEmpty ? 'No shop linked' : 'Unknown shop');
-                              return ListTile(
-                                title: Text(user.displayName.isEmpty ? user.email : user.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                subtitle: Text('${user.email}  •  ${user.role}  •  $shop  •  ${user.isActive ? 'Active' : 'Disabled'}'),
-                                trailing: Wrap(
-                                  spacing: 6,
-                                  children: [
-                                    IconButton(
-                                      tooltip: user.isActive ? 'Disable login' : 'Enable login',
-                                      onPressed: () => UserManagementService().updateAccess(
-                                        userId: user.id,
-                                        role: user.role == 'super_admin' ? 'admin' : user.role,
-                                        permissions: user.permissions,
-                                        isActive: !user.isActive,
-                                      ),
-                                      icon: Icon(user.isActive ? Icons.person_off_outlined : Icons.person_outline_rounded, color: PhyimacyBrand.teal),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Set password',
-                                      onPressed: () => showManagedPasswordDialog(context, user),
-                                      icon: const Icon(Icons.password_rounded, color: PhyimacyBrand.teal),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
     );
   }
 }

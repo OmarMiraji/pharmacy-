@@ -4,12 +4,50 @@ import 'package:google_fonts/google_fonts.dart';
 import '../backend/medicine_service.dart';
 import '../backend/models.dart';
 import '../backend/shop_alerts.dart';
+import '../l10n/app_locale.dart';
 import '../theme/brand.dart';
+import 'app_notice.dart';
 
-class ShopAlertBell extends StatelessWidget {
+class ShopAlertBell extends StatefulWidget {
   const ShopAlertBell({this.onOpenExpired, super.key});
 
   final VoidCallback? onOpenExpired;
+
+  @override
+  State<ShopAlertBell> createState() => _ShopAlertBellState();
+}
+
+class _ShopAlertBellState extends State<ShopAlertBell> {
+  var _toasted = false;
+
+  void _maybeToast(List<ShopAlert> alerts) {
+    if (_toasted) return;
+    _toasted = true;
+    final expired = alerts.where((alert) => alert.kind == ShopAlertKind.expired).length;
+    final soon = alerts.where((alert) => alert.kind == ShopAlertKind.expiringSoon).length;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (expired > 0) {
+        showAppNotice(
+          context,
+          S.t(
+            '$expired medicine${expired == 1 ? '' : 's'} already expired. Open notifications.',
+            'Dawa $expired zimeshaisha muda. Fungua arifa.',
+          ),
+          kind: AppNoticeKind.warning,
+        );
+      } else if (soon > 0) {
+        showAppNotice(
+          context,
+          S.t(
+            '$soon medicine${soon == 1 ? '' : 's'} expire within 2 months.',
+            'Dawa $soon zinaisha ndani ya miezi 2.',
+          ),
+          kind: AppNoticeKind.warning,
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +62,14 @@ class ShopAlertBell extends StatelessWidget {
               medicineSnapshot.data ?? const <Medicine>[],
               batchSnapshot.data ?? const <MedicineBatch>[],
             );
+            if (medicineSnapshot.hasData && batchSnapshot.hasData) {
+              _maybeToast(alerts);
+            }
             final count = alerts.length;
             return Padding(
               padding: const EdgeInsets.only(right: 10),
               child: IconButton(
-                tooltip: count == 0 ? 'No stock alerts' : '$count stock alerts',
+                tooltip: count == 0 ? S.t('No stock alerts', 'Hakuna arifa za stock') : '$count ${S.t('stock alerts', 'arifa za stock')}',
                 onPressed: () => _openInbox(context, alerts),
                 icon: Badge(
                   isLabelVisible: count > 0,
@@ -81,7 +122,7 @@ class ShopAlertBell extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Stock alerts',
+                              S.t('Stock alerts', 'Arifa za stock'),
                               style: GoogleFonts.playfairDisplay(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
@@ -90,8 +131,11 @@ class ShopAlertBell extends StatelessWidget {
                             ),
                             Text(
                               alerts.isEmpty
-                                  ? 'No expiry warnings right now'
-                                  : '${alerts.length} notice${alerts.length == 1 ? '' : 's'} · 5-day warning and expired stock',
+                                  ? S.t('No expiry warnings right now', 'Hakuna onyo la kuisha sasa')
+                                  : S.t(
+                                      '${alerts.length} notice${alerts.length == 1 ? '' : 's'} · 2-month warning and expired stock',
+                                      'Arifa ${alerts.length} · onyo la miezi 2 na dawa zilizoisha',
+                                    ),
                               style: GoogleFonts.inter(fontSize: 12, color: PhyimacyBrand.muted),
                             ),
                           ],
@@ -109,7 +153,7 @@ class ShopAlertBell extends StatelessWidget {
                   child: alerts.isEmpty
                       ? Center(
                           child: Text(
-                            'All in-date stock is outside the 5-day window.',
+                            S.t('No stock expires within 2 months.', 'Hakuna stock inayoisha ndani ya miezi 2.'),
                             style: GoogleFonts.inter(color: PhyimacyBrand.muted),
                             textAlign: TextAlign.center,
                           ),
@@ -142,16 +186,16 @@ class ShopAlertBell extends StatelessWidget {
                           },
                         ),
                 ),
-                if (alerts.any((alert) => alert.kind == ShopAlertKind.expired) && onOpenExpired != null)
+                if (alerts.any((alert) => alert.kind == ShopAlertKind.expired) && widget.onOpenExpired != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: FilledButton.icon(
                       onPressed: () {
                         Navigator.pop(dialogContext);
-                        onOpenExpired!();
+                        widget.onOpenExpired!();
                       },
                       icon: const Icon(Icons.event_busy_rounded, size: 18),
-                      label: const Text('Open expired stock'),
+                      label: Text(S.t('Open expired stock', 'Fungua stock iliyoisha')),
                     ),
                   ),
               ],

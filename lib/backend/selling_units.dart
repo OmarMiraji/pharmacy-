@@ -41,6 +41,11 @@ abstract final class BaseUnits {
     'Strip',
   ];
 
+  static bool sellsByPiece(String unit) {
+    final value = normalize(unit);
+    return value == 'Tablet' || value == 'Capsule';
+  }
+
   static String normalize(String raw) {
     final value = raw.trim();
     if (value.isEmpty) return 'Tablet';

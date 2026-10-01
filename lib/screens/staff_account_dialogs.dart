@@ -7,6 +7,7 @@ import '../backend/tenant_context.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
 import '../l10n/app_locale.dart';
+import '../widgets/app_notice.dart';
 import 'password_security.dart';
 
 Future<void> showCreateStaffDialog(
@@ -71,20 +72,28 @@ Future<void> showCreateStaffDialog(
                           TextField(
                             controller: password,
                             obscureText: hidePassword,
+                            onChanged: (_) => setState(() {}),
                             decoration: passwordInputDecoration(
                               label: S.t('Password', 'Nenosiri'),
                               hidden: hidePassword,
                               onToggle: () => setState(() => hidePassword = !hidePassword),
+                              errorText: password.text.isNotEmpty && password.text.trim().length < 6
+                                  ? S.t('Use at least 6 characters.', 'Tumia herufi 6 au zaidi.')
+                                  : null,
                             ),
                           ),
                           const SizedBox(height: 10),
                           TextField(
                             controller: confirmPassword,
                             obscureText: hideConfirm,
+                            onChanged: (_) => setState(() {}),
                             decoration: passwordInputDecoration(
                               label: S.t('Confirm password', 'Thibitisha nenosiri'),
                               hidden: hideConfirm,
                               onToggle: () => setState(() => hideConfirm = !hideConfirm),
+                              errorText: confirmPassword.text.isNotEmpty && password.text != confirmPassword.text
+                                  ? S.t('Passwords do not match.', 'Nenosiri hayafanani.')
+                                  : null,
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -126,7 +135,14 @@ Future<void> showCreateStaffDialog(
                             }),
                           ),
                           const SizedBox(height: 16),
-                          Text(S.t('Permissions', 'Ruhusa'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xff0f766e))),
+                          Text(S.t('Shop access', 'Ruhusa za duka'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xff0f766e))),
+                          const SizedBox(height: 4),
+                          Text(
+                            role == 'admin'
+                                ? S.t('Shop admin receives every shop permission automatically.', 'Admin wa duka anapata ruhusa zote za duka moja kwa moja.')
+                                : S.t('Tick only the work this login should do in the shop.', 'Tika kazi tu ambazo login hii inaruhusiwa kufanya dukani.'),
+                            style: const TextStyle(fontSize: 12, color: Color(0xff68807d), height: 1.35),
+                          ),
                           const SizedBox(height: 6),
                           Wrap(
                             spacing: 8,
@@ -142,8 +158,10 @@ Future<void> showCreateStaffDialog(
                                       AppLocale.instance.isSw ? AppPermissions.labelSw(permission) : AppPermissions.labelEn(permission),
                                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                                     ),
-                                    value: permissions[permission] == true,
-                                    onChanged: (value) => setState(() => permissions[permission] = value ?? false),
+                                    value: role == 'admin' ? true : permissions[permission] == true,
+                                    onChanged: role == 'admin'
+                                        ? null
+                                        : (value) => setState(() => permissions[permission] = value ?? false),
                                   ),
                                 ),
                             ],
@@ -159,11 +177,9 @@ Future<void> showCreateStaffDialog(
                       TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
                       const SizedBox(width: 10),
                       FilledButton(
-                        onPressed: () async {
+                        onPressed: password.text.trim().length >= 6 && password.text == confirmPassword.text
+                            ? () async {
                           try {
-                            if (password.text != confirmPassword.text) {
-                              throw StateError(S.t('Password and confirm password must match.', 'Nenosiri na uthibitisho havifanani.'));
-                            }
                             final shopId = canManageSuperAdmin ? selectedPharmacyId : TenantContext.instance.pharmacyId;
                             await service.createLoginAndProfile(
                               displayName: name.text,
@@ -172,23 +188,21 @@ Future<void> showCreateStaffDialog(
                               phone: phone.text,
                               employeeCode: employeeCode.text,
                               role: role,
-                              permissions: permissions,
+                              permissions: role == 'admin' ? AppPermissions.resolvedPermissions('admin') : permissions,
                               isActive: true,
                               pharmacyId: shopId,
                             );
                             if (dialogContext.mounted) Navigator.pop(dialogContext);
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(S.t('Staff login created.', 'Login ya staff imeundwa.'))),
-                              );
+                              showAppNotice(context, S.t('Staff login is ready.', 'Login ya staff iko tayari.'));
                             }
                           } catch (error) {
-                            final message = '$error'.replaceFirst('Exception: ', '').replaceFirst('Bad state: ', '');
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                              showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
                             }
                           }
-                        },
+                        }
+                            : null,
                         child: Text(S.t('Create login', 'Tengeneza login')),
                       ),
                     ],
@@ -281,15 +295,28 @@ Future<void> showEditStaffDialog(
                           Row(children: [
                             Expanded(
                               child: DropdownButtonFormField<String>(
-                                initialValue: role,
+                                initialValue: [
+                                  if (user.role == 'super_admin') 'super_admin',
+                                  if (canManageSuperAdmin || user.role == 'admin') 'admin',
+                                  'pharmacist',
+                                  'cashier',
+                                  'storekeeper',
+                                ].contains(role)
+                                    ? role
+                                    : (canManageSuperAdmin || user.role == 'admin' ? 'admin' : 'pharmacist'),
                                 decoration: InputDecoration(labelText: S.t('Role', 'Wajibu')),
                                 items: [
-                                  if (canManageSuperAdmin || user.role == 'admin') DropdownMenuItem(value: 'admin', child: Text(S.t('Admin', 'Admin'))),
+                                  if (user.role == 'super_admin')
+                                    DropdownMenuItem(value: 'super_admin', child: Text(S.t('Super Admin', 'Super Admin'))),
+                                  if (canManageSuperAdmin || user.role == 'admin')
+                                    DropdownMenuItem(value: 'admin', child: Text(S.t('Admin', 'Admin'))),
                                   DropdownMenuItem(value: 'pharmacist', child: Text(S.t('Pharmacist', 'Pharmacist'))),
                                   DropdownMenuItem(value: 'cashier', child: Text(S.t('Cashier', 'Cashier'))),
                                   DropdownMenuItem(value: 'storekeeper', child: Text(S.t('Storekeeper', 'Storekeeper'))),
                                 ],
-                                onChanged: canChangeRole ? (value) => setState(() => role = value ?? role) : null,
+                                onChanged: user.role == 'super_admin'
+                                    ? null
+                                    : (canChangeRole ? (value) => setState(() => role = value ?? role) : null),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -303,28 +330,41 @@ Future<void> showEditStaffDialog(
                             ),
                           ]),
                           const SizedBox(height: 16),
-                          Text(S.t('Permissions', 'Ruhusa'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xff0f766e))),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 3,
-                            children: [
-                              for (final permission in visiblePermissions)
-                                SizedBox(
-                                  width: 310,
-                                  child: CheckboxListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    dense: true,
-                                    title: Text(
-                                      AppLocale.instance.isSw ? AppPermissions.labelSw(permission) : AppPermissions.labelEn(permission),
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                    ),
-                                    value: permissions[permission] == true,
-                                    onChanged: (value) => setState(() => permissions[permission] = value ?? false),
-                                  ),
-                                ),
-                            ],
+                          Text(S.t('Shop access', 'Ruhusa za duka'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xff0f766e))),
+                          const SizedBox(height: 4),
+                          Text(
+                            role == 'super_admin'
+                                ? S.t('This is a system login. It is not a shop staff account.', 'Hii ni login ya mfumo. Si akaunti ya staff wa duka.')
+                                : role == 'admin'
+                                ? S.t('Shop admin receives every shop permission automatically.', 'Admin wa duka anapata ruhusa zote za duka moja kwa moja.')
+                                : S.t('Tick only the work this login should do in the shop.', 'Tika kazi tu ambazo login hii inaruhusiwa kufanya dukani.'),
+                            style: const TextStyle(fontSize: 12, color: Color(0xff68807d), height: 1.35),
                           ),
+                          if (role != 'super_admin') ...[
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 3,
+                              children: [
+                                for (final permission in visiblePermissions)
+                                  SizedBox(
+                                    width: 310,
+                                    child: CheckboxListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                      title: Text(
+                                        AppLocale.instance.isSw ? AppPermissions.labelSw(permission) : AppPermissions.labelEn(permission),
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                      value: role == 'admin' ? true : permissions[permission] == true,
+                                      onChanged: role == 'admin'
+                                          ? null
+                                          : (value) => setState(() => permissions[permission] = value ?? false),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -345,14 +385,17 @@ Future<void> showEditStaffDialog(
                               phone: phone.text,
                               employeeCode: employeeCode.text,
                               role: role == 'super_admin' ? user.role : role,
-                              permissions: permissions,
+                              permissions: role == 'admin' ? AppPermissions.resolvedPermissions('admin') : permissions,
                               isActive: isActive,
                               pharmacyId: selectedPharmacyId,
                             );
                             if (dialogContext.mounted) Navigator.pop(dialogContext);
+                            if (context.mounted) {
+                              showAppNotice(context, S.t('Staff details have been saved.', 'Taarifa za staff zimehifadhiwa.'));
+                            }
                           } catch (error) {
                             if (dialogContext.mounted) {
-                              ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('$error')));
+                              showAppNotice(dialogContext, friendlyActionError(error), kind: AppNoticeKind.error);
                             }
                           }
                         },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../backend/audit_log_service.dart';
 import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/subscription_service.dart';
@@ -53,6 +54,11 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
         note: _noteController.text.trim(),
       );
       await Clipboard.setData(ClipboardData(text: token));
+      await AuditLogService().record(
+        action: 'TOKEN_CREATED',
+        pharmacyId: _selectedPharmacyId,
+        detail: token,
+      );
       setState(() => _lastToken = token);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -87,6 +93,11 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
         expiresAt: expiresAt,
         note: _noteController.text.trim(),
         paymentReference: _paymentRefController.text.trim(),
+      );
+      await AuditLogService().record(
+        action: 'GRANTED_SUBSCRIPTION',
+        pharmacyId: pharmacyId,
+        detail: 'until ${expiresAt.day}/${expiresAt.month}/${expiresAt.year}',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -340,20 +351,23 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
                             child: const Text('Edit'),
                           ),
                           TextButton(
-                            onPressed: () => _service.extendLicense(pharmacyId: pharmacy.id, extraDays: 30),
-                            child: const Text('+30 days'),
+                            onPressed: () => _extendPharmacy(pharmacy),
+                            child: const Text('Extend'),
                           ),
                           TextButton(
-                            onPressed: () => _service.lockLicense(pharmacy.id),
+                            onPressed: () => _lockPharmacy(pharmacy),
                             child: const Text('Lock writes'),
                           ),
                           TextButton(
-                            onPressed: () => _service.unlockLicense(pharmacy.id),
+                            onPressed: () async {
+                              await _service.unlockLicense(pharmacy.id);
+                              await AuditLogService().record(action: 'UNLOCKED_WRITES', pharmacyId: pharmacy.id, pharmacyName: pharmacy.name);
+                            },
                             child: const Text('Unlock'),
                           ),
                           TextButton(
-                            onPressed: () => _deletePharmacy(pharmacy),
-                            child: const Text('Delete'),
+                            onPressed: () => _deactivatePharmacy(pharmacy),
+                            child: const Text('Deactivate'),
                           ),
                         ],
                       ),
@@ -399,29 +413,72 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
     }
   }
 
-  Future<void> _deletePharmacy(PharmacyRecord pharmacy) async {
+  Future<void> _extendPharmacy(PharmacyRecord pharmacy) async {
+    final daysController = TextEditingController(text: '30');
+    final days = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Extend subscription'),
+        content: TextField(
+          controller: daysController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Days (7, 15, 30, 90, 180, 365…)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, int.tryParse(daysController.text.trim())),
+            child: const Text('Extend'),
+          ),
+        ],
+      ),
+    );
+    if (days == null || days <= 0) return;
+    await _service.extendLicense(pharmacyId: pharmacy.id, extraDays: days);
+    await AuditLogService().record(action: 'EXTENDED_SUBSCRIPTION', pharmacyId: pharmacy.id, pharmacyName: pharmacy.name, detail: '+$days days');
+  }
+
+  Future<void> _lockPharmacy(PharmacyRecord pharmacy) async {
+    final reason = TextEditingController(text: 'Subscription expired');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete pharmacy?'),
-        content: Text('Remove ${pharmacy.name} from Firebase? Staff logins stay, but this shop record is deleted.'),
+        title: Text('Lock ${pharmacy.name}?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('This stops new sales, stock changes, and purchases. Login and viewing records can remain.'),
+            const SizedBox(height: 12),
+            TextField(controller: reason, decoration: const InputDecoration(labelText: 'Reason')),
+          ],
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Lock pharmacy')),
         ],
       ),
     );
     if (confirmed != true) return;
-    try {
-      await _pharmacies.deletePharmacy(pharmacy.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pharmacy deleted.')));
-      }
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $error')));
-      }
-    }
+    await _service.lockLicense(pharmacy.id);
+    await AuditLogService().record(action: 'LOCKED_WRITES', pharmacyId: pharmacy.id, pharmacyName: pharmacy.name, detail: reason.text.trim());
+  }
+
+  Future<void> _deactivatePharmacy(PharmacyRecord pharmacy) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Deactivate pharmacy?'),
+        content: Text('${pharmacy.name} will be locked. Data stays. This is safer than Delete.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Deactivate')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _service.lockLicense(pharmacy.id);
+    await AuditLogService().record(action: 'DEACTIVATED_PHARMACY', pharmacyId: pharmacy.id, pharmacyName: pharmacy.name);
   }
 
   String _fmt(DateTime? value) {

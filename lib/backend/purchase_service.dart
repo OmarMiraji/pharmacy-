@@ -13,13 +13,25 @@ class SupplierOption {
 }
 
 class PurchaseRecord {
-  const PurchaseRecord({required this.id, required this.supplierId, required this.status, required this.totalMinor, this.invoiceNumber});
+  const PurchaseRecord({
+    required this.id,
+    required this.supplierId,
+    required this.status,
+    required this.totalMinor,
+    this.invoiceNumber,
+    this.supplierName,
+    this.medicineName,
+    this.quantity,
+  });
 
   final String id;
   final String supplierId;
   final String status;
   final int totalMinor;
   final String? invoiceNumber;
+  final String? supplierName;
+  final String? medicineName;
+  final int? quantity;
 }
 
 class PurchaseService {
@@ -32,7 +44,19 @@ class PurchaseService {
 
   Stream<List<SupplierOption>> watchSuppliers() => TenantContext.instance.scoped(_suppliers).snapshots().map((snapshot) => snapshot.docs.map((doc) => SupplierOption(id: doc.id, name: doc.data()['name'] as String? ?? '', phone: doc.data()['phone'] as String?)).where((supplier) => supplier.name.isNotEmpty).toList()..sort((a, b) => a.name.compareTo(b.name)));
 
-  Stream<List<PurchaseRecord>> watchPurchases() => TenantContext.instance.scoped(_purchases).snapshots().map((snapshot) => snapshot.docs.map((doc) { final data = doc.data(); return PurchaseRecord(id: doc.id, supplierId: data['supplierId'] as String? ?? '', status: data['status'] as String? ?? 'draft', totalMinor: (data['totalMinor'] as num?)?.toInt() ?? 0, invoiceNumber: data['invoiceNumber'] as String?); }).toList());
+  Stream<List<PurchaseRecord>> watchPurchases() => TenantContext.instance.scoped(_purchases).snapshots().map((snapshot) => snapshot.docs.map((doc) {
+        final data = doc.data();
+        return PurchaseRecord(
+          id: doc.id,
+          supplierId: data['supplierId'] as String? ?? '',
+          status: data['status'] as String? ?? 'draft',
+          totalMinor: (data['totalMinor'] as num?)?.toInt() ?? 0,
+          invoiceNumber: data['invoiceNumber'] as String?,
+          supplierName: data['supplierName'] as String?,
+          medicineName: data['medicineName'] as String?,
+          quantity: (data['quantityReceived'] as num?)?.toInt(),
+        );
+      }).toList());
 
   Future<void> createSupplier({required String name, String? phone, String? email}) async {
     TenantContext.instance.assertWritable();
@@ -50,82 +74,118 @@ class PurchaseService {
       throw ArgumentError('Expiry date cannot be in the past.');
     }
 
-    final duplicateBatches = await TenantContext.instance
+    String? supplierName;
+    try {
+      final supplierSnap = await _suppliers.doc(supplierId).get();
+      supplierName = supplierSnap.data()?['name'] as String?;
+    } catch (_) {}
+
+    final existingBatchQuery = await TenantContext.instance
         .scoped(_firestore.collection(FirestoreCollections.medicineBatches))
         .where('medicineId', isEqualTo: medicineId)
         .where('batchNumber', isEqualTo: normalizedBatch)
         .where('isActive', isEqualTo: true)
-        .limit(1)
+        .limit(5)
         .get();
-    if (duplicateBatches.docs.isNotEmpty) {
-      throw StateError('This medicine already has an active batch with the same batch number.');
+    DocumentReference<Map<String, dynamic>>? existingBatchRef;
+    for (final doc in existingBatchQuery.docs) {
+      final existingExpiry = (doc.data()['expiryDate'] as Timestamp?)?.toDate();
+      if (existingExpiry == null) continue;
+      if (existingExpiry.year == expiryDate.year && existingExpiry.month == expiryDate.month && existingExpiry.day == expiryDate.day) {
+        existingBatchRef = doc.reference;
+        break;
+      }
     }
 
     final purchaseRef = _purchases.doc();
     final itemRef = purchaseRef.collection(FirestoreCollections.purchaseItems).doc();
     final medicineRef = _firestore.collection(FirestoreCollections.medicines).doc(medicineId);
-    final batchRef = _firestore.collection(FirestoreCollections.medicineBatches).doc();
+    final batchRef = existingBatchRef ?? _firestore.collection(FirestoreCollections.medicineBatches).doc();
     final movementRef = _firestore.collection(FirestoreCollections.stockMovements).doc();
     final total = quantity * unitCostMinor;
+    var medicineName = '';
+    var stockQty = quantity;
     await _firestore.runTransaction((transaction) async {
       final medicineSnapshot = await transaction.get(medicineRef);
       if (!medicineSnapshot.exists) throw StateError('Medicine does not exist.');
       final medicineData = medicineSnapshot.data() ?? const <String, dynamic>{};
       final packSize = (medicineData['packSize'] as num?)?.toInt() ?? 1;
       final loose = packSize > 1;
-      final stockQty = loose ? quantity * packSize : quantity;
+      stockQty = loose ? quantity * packSize : quantity;
       final currentStock = (medicineData['quantityOnHand'] as num?)?.toInt() ?? 0;
+      var batchQty = 0;
+      if (existingBatchRef != null) {
+        final batchSnap = await transaction.get(existingBatchRef);
+        batchQty = (batchSnap.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+      }
       final now = FieldValue.serverTimestamp();
+      medicineName = (medicineData['name'] as String?) ?? '';
       transaction.set(purchaseRef, TenantContext.instance.withTenant({
         'supplierId': supplierId,
+        'supplierName': supplierName,
         'invoiceNumber': invoiceNumber?.trim(),
         'status': 'received',
         'subtotalMinor': total,
         'taxMinor': 0,
         'totalMinor': total,
+        'medicineId': medicineId,
+        'medicineName': medicineName,
+        'quantityReceived': stockQty,
         'receivedAt': now,
         'createdBy': createdBy,
         'createdAt': now,
         'updatedAt': now,
       }));
-      transaction.set(itemRef, {
+      transaction.set(itemRef, TenantContext.instance.withTenant({
         'medicineId': medicineId,
+        'medicineName': medicineName,
         'quantity': quantity,
         'unitCostMinor': unitCostMinor,
         'totalMinor': total,
         'batchNumber': normalizedBatch,
         'expiryDate': Timestamp.fromDate(expiryDate),
-      });
+      }));
       transaction.update(medicineRef, {
         'quantityOnHand': currentStock + stockQty,
         'purchasePriceMinor': unitCostMinor,
         'supplierId': supplierId,
         'updatedAt': now,
       });
-      transaction.set(batchRef, TenantContext.instance.withTenant({
-        'medicineId': medicineId,
-        'batchNumber': normalizedBatch,
-        'expiryDate': Timestamp.fromDate(expiryDate),
-        'quantityOnHand': stockQty,
-        'unitCostMinor': unitCostMinor,
-        'supplierId': supplierId,
-        'purchaseId': purchaseRef.id,
-        'isActive': true,
-        'createdAt': now,
-        'updatedAt': now,
-      }));
-      transaction.set(movementRef, StockLedger.movement(
+      if (existingBatchRef != null) {
+        transaction.update(existingBatchRef, {
+          'quantityOnHand': batchQty + stockQty,
+          'unitCostMinor': unitCostMinor,
+          'expiryDate': Timestamp.fromDate(expiryDate),
+          'isActive': true,
+          'updatedAt': now,
+        });
+      } else {
+        transaction.set(batchRef, TenantContext.instance.withTenant({
+          'medicineId': medicineId,
+          'batchNumber': normalizedBatch,
+          'expiryDate': Timestamp.fromDate(expiryDate),
+          'quantityOnHand': stockQty,
+          'unitCostMinor': unitCostMinor,
+          'supplierId': supplierId,
+          'purchaseId': purchaseRef.id,
+          'isActive': true,
+          'createdAt': now,
+          'updatedAt': now,
+        }));
+      }
+    });
+    try {
+      await movementRef.set(StockLedger.movement(
         medicineId: medicineId,
-        medicineName: medicineSnapshot.data()?['name'] as String?,
+        medicineName: medicineName,
         type: 'purchase',
-        quantityChange: quantity,
+        quantityChange: stockQty,
         referenceId: purchaseRef.id,
         createdBy: createdBy,
         batchId: batchRef.id,
         batchNumber: normalizedBatch,
-        createdAt: now,
       ));
-    });
+    } catch (_) {}
     return purchaseRef.id;
   }
 }

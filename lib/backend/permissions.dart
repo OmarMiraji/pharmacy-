@@ -170,46 +170,45 @@ abstract final class AppPermissions {
     for (final permission in pharmacyPermissions) {
       defaults.putIfAbsent(permission, () => false);
     }
-    if (role == 'admin') {
-      for (final permission in pharmacyPermissions) {
-        defaults[permission] = true;
-      }
-    }
     stored?.forEach((key, value) {
       if (superAdminOnlyPermissions.contains(key) && role != 'super_admin') {
         return;
       }
       defaults[key] = value == true;
     });
+    if (role == 'admin') {
+      for (final permission in pharmacyPermissions) {
+        defaults[permission] = true;
+      }
+    }
     return defaults;
   }
 
-  static List<String> shopTickList({required bool includeDeveloper}) {
-    if (includeDeveloper) return all.toList();
+  static List<String> shopTickList({bool includeDeveloper = false}) {
     return pharmacyPermissions.toList();
   }
 
   static String labelEn(String permission) => switch (permission) {
-        dashboardView => 'See Overview',
-        medicinesView => 'See medicines catalogue',
-        medicinesCreate => 'Add / import medicines',
-        medicinesUpdate => 'Edit medicines (price, pack, type)',
+        dashboardView => 'View dashboard',
+        medicinesView => 'View medicines',
+        medicinesCreate => 'Add and import medicines',
+        medicinesUpdate => 'Edit medicine details',
         medicinesDelete => 'Delete medicines',
-        inventoryView => 'See stock / batches',
-        inventoryAdjust => 'Adjust stock and write off expired',
-        salesView => 'See Sales (POS)',
-        salesCreate => 'Complete a sale',
-        salesDiscount => 'Apply a sale discount',
-        salesRefund => 'Refund a sale',
-        purchasesView => 'See purchases',
-        purchasesCreate => 'Record a purchase',
+        inventoryView => 'View stock and batches',
+        inventoryAdjust => 'Adjust stock and write off expired items',
+        salesView => 'View sales',
+        salesCreate => 'Complete sales',
+        salesDiscount => 'Apply discounts',
+        salesRefund => 'Refund sales',
+        purchasesView => 'View purchases',
+        purchasesCreate => 'Record purchases',
         purchasesReceive => 'Receive incoming stock',
-        suppliersManage => 'Add / edit suppliers',
-        customersManage => 'Manage walk-in customers',
-        expensesManage => 'Record shop expenses',
-        reportsView => 'See reports',
+        suppliersManage => 'Manage suppliers',
+        customersManage => 'Manage customers',
+        expensesManage => 'Record expenses',
+        reportsView => 'View reports',
         usersManage => 'Manage staff logins',
-        settingsManage => 'Shop settings, printer, backup',
+        settingsManage => 'Shop settings and devices',
         subscriptionManage => 'Manage licenses',
         subscriptionActivate => 'Activate a license',
         subscriptionSuspend => 'Suspend a license',
@@ -223,26 +222,26 @@ abstract final class AppPermissions {
       };
 
   static String labelSw(String permission) => switch (permission) {
-        dashboardView => 'Ona Overview',
-        medicinesView => 'Ona orodha ya dawa',
-        medicinesCreate => 'Ongeza / import dawa',
-        medicinesUpdate => 'Hariri dawa (bei, pack, aina)',
+        dashboardView => 'Ona dashibodi',
+        medicinesView => 'Ona dawa',
+        medicinesCreate => 'Ongeza na import dawa',
+        medicinesUpdate => 'Hariri taarifa za dawa',
         medicinesDelete => 'Futa dawa',
-        inventoryView => 'Ona stock / batches',
+        inventoryView => 'Ona stock na batches',
         inventoryAdjust => 'Badilisha stock na toa zilizoisha',
-        salesView => 'Ona Sales (POS)',
+        salesView => 'Ona mauzo',
         salesCreate => 'Kamilisha mauzo',
-        salesDiscount => 'Weka punguzo kwenye mauzo',
-        salesRefund => 'Rudisha mauzo (refund)',
+        salesDiscount => 'Weka punguzo',
+        salesRefund => 'Rudisha mauzo',
         purchasesView => 'Ona manunuzi',
-        purchasesCreate => 'Rekodi ununuzi',
+        purchasesCreate => 'Rekodi manunuzi',
         purchasesReceive => 'Pokea stock inayoingia',
-        suppliersManage => 'Ongeza / hariri wasambazaji',
+        suppliersManage => 'Simamia wasambazaji',
         customersManage => 'Simamia wateja',
-        expensesManage => 'Rekodi matumizi ya duka',
+        expensesManage => 'Rekodi matumizi',
         reportsView => 'Ona ripoti',
         usersManage => 'Simamia login za staff',
-        settingsManage => 'Mipangilio, printa, backup',
+        settingsManage => 'Mipangilio ya duka na vifaa',
         subscriptionManage => 'Simamia leseni',
         subscriptionActivate => 'Activate leseni',
         subscriptionSuspend => 'Sitisha leseni',

@@ -16,4 +16,7 @@ abstract final class FirestoreCollections {
   static const subscriptions = 'subscriptions';
   static const subscriptionCodes = 'subscription_codes';
   static const appReleases = 'app_releases';
+  static const auditLogs = 'audit_logs';
+  static const licensePayments = 'license_payments';
+  static const announcements = 'announcements';
 }

@@ -4,6 +4,7 @@ import '../backend/auth_service.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
 import '../l10n/app_locale.dart';
+import '../widgets/app_notice.dart';
 
 Future<void> showChangeOwnPasswordDialog(BuildContext context) async {
   final current = TextEditingController();
@@ -43,20 +44,28 @@ Future<void> showChangeOwnPasswordDialog(BuildContext context) async {
                 TextField(
                   controller: next,
                   obscureText: hideNext,
+                  onChanged: (_) => setState(() {}),
                   decoration: passwordInputDecoration(
                     label: S.t('New password (min 6 characters)', 'Nenosiri jipya (angalau herufi 6)'),
                     hidden: hideNext,
                     onToggle: () => setState(() => hideNext = !hideNext),
+                    errorText: next.text.isNotEmpty && next.text.trim().length < 6
+                        ? S.t('Use at least 6 characters.', 'Tumia herufi 6 au zaidi.')
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: confirm,
                   obscureText: hideConfirm,
+                  onChanged: (_) => setState(() {}),
                   decoration: passwordInputDecoration(
                     label: S.t('Confirm new password', 'Thibitisha nenosiri jipya'),
                     hidden: hideConfirm,
                     onToggle: () => setState(() => hideConfirm = !hideConfirm),
+                    errorText: confirm.text.isNotEmpty && next.text != confirm.text
+                        ? S.t('Passwords do not match.', 'Nenosiri hayafanani.')
+                        : null,
                   ),
                 ),
               ],
@@ -64,7 +73,12 @@ Future<void> showChangeOwnPasswordDialog(BuildContext context) async {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(S.t('Cancel', 'Ghairi'))),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(S.t('Save password', 'Hifadhi nenosiri'))),
+            FilledButton(
+              onPressed: next.text.trim().length >= 6 && next.text == confirm.text
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
+              child: Text(S.t('Save password', 'Hifadhi nenosiri')),
+            ),
           ],
         );
           },
@@ -73,14 +87,21 @@ Future<void> showChangeOwnPasswordDialog(BuildContext context) async {
     );
     if (saved != true || !context.mounted) return;
     if (next.text.trim() != confirm.text.trim()) {
-      throw StateError('New password and confirm password must match.');
+      if (context.mounted) {
+        showAppNotice(
+          context,
+          S.t('Passwords do not match.', 'Nenosiri hayafanani.'),
+          kind: AppNoticeKind.warning,
+        );
+      }
+      return;
     }
     await AuthService().changeOwnPassword(currentPassword: current.text, newPassword: next.text);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Your password was changed.')));
+    showAppNotice(context, S.t('Your password has been updated.', 'Nenosiri lako limebadilishwa.'));
   } catch (error) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
     }
   } finally {
     current.dispose();
@@ -120,20 +141,28 @@ Future<void> showManagedPasswordDialog(BuildContext context, UserProfile target)
                     TextField(
                       controller: password,
                       obscureText: hidePassword,
+                      onChanged: (_) => setState(() {}),
                       decoration: passwordInputDecoration(
                         label: S.t('New password (min 6 characters)', 'Nenosiri jipya (angalau herufi 6)'),
                         hidden: hidePassword,
                         onToggle: () => setState(() => hidePassword = !hidePassword),
+                        errorText: password.text.isNotEmpty && password.text.trim().length < 6
+                            ? S.t('Use at least 6 characters.', 'Tumia herufi 6 au zaidi.')
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: confirm,
                       obscureText: hideConfirm,
+                      onChanged: (_) => setState(() {}),
                       decoration: passwordInputDecoration(
                         label: S.t('Confirm password', 'Thibitisha nenosiri'),
                         hidden: hideConfirm,
                         onToggle: () => setState(() => hideConfirm = !hideConfirm),
+                        errorText: confirm.text.isNotEmpty && password.text != confirm.text
+                            ? S.t('Passwords do not match.', 'Nenosiri hayafanani.')
+                            : null,
                       ),
                     ),
                   ],
@@ -142,24 +171,24 @@ Future<void> showManagedPasswordDialog(BuildContext context, UserProfile target)
               actions: [
                 TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
                 FilledButton(
-                  onPressed: () async {
-                    try {
-                      if (password.text.trim() != confirm.text.trim()) {
-                        throw StateError(S.t('New password and confirm password must match.', 'Nenosiri jipya na uthibitisho havifanani.'));
-                      }
-                      await UserManagementService().setLoginPassword(userId: target.id, password: password.text);
-                      if (dialogContext.mounted) Navigator.pop(dialogContext);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(S.t('Password saved. They can sign in with the new one now.', 'Nenosiri limehifadhiwa. Wanaweza kuingia nalo sasa.'))),
-                        );
-                      }
-                    } catch (error) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
-                      }
-                    }
-                  },
+                  onPressed: password.text.trim().length >= 6 && password.text == confirm.text
+                      ? () async {
+                          try {
+                            await UserManagementService().setLoginPassword(userId: target.id, password: password.text);
+                            if (dialogContext.mounted) Navigator.pop(dialogContext);
+                            if (context.mounted) {
+                              showAppNotice(
+                                context,
+                                S.t('Password updated. They can sign in with it now.', 'Nenosiri limebadilishwa. Wanaweza kuingia nalo sasa.'),
+                              );
+                            }
+                          } catch (error) {
+                            if (context.mounted) {
+                              showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
+                            }
+                          }
+                        }
+                      : null,
                   child: Text(S.t('Set password', 'Weka nenosiri')),
                 ),
               ],
@@ -178,9 +207,13 @@ InputDecoration passwordInputDecoration({
   required String label,
   required bool hidden,
   required VoidCallback onToggle,
+  String? errorText,
+  String? helperText,
 }) {
   return InputDecoration(
     labelText: label,
+    errorText: errorText,
+    helperText: helperText,
     suffixIcon: IconButton(
       tooltip: hidden ? S.t('Show password', 'Onyesha nenosiri') : S.t('Hide password', 'Ficha nenosiri'),
       onPressed: onToggle,

@@ -8,11 +8,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'backend/announcement_service.dart';
 import 'backend/app_update_service.dart';
 import 'backend/auth_service.dart';
 import 'backend/firestore_collections.dart';
 import 'backend/inventory_service.dart';
 import 'backend/medicine_service.dart';
+import 'backend/medicine_match.dart';
 import 'backend/models.dart';
 import 'backend/offline_sync_service.dart';
 import 'backend/purchase_service.dart';
@@ -32,7 +34,9 @@ import 'backend/selling_units.dart';
 import 'backend/shop_alerts.dart';
 import 'l10n/app_locale.dart';
 import 'theme/brand.dart';
+import 'widgets/app_notice.dart';
 import 'screens/subscription_admin_screen.dart';
+import 'screens/receive_purchase_dialog.dart';
 import 'screens/super_admin_home.dart';
 import 'screens/pharmacy_workspace_settings_screen.dart';
 import 'screens/app_update_screen.dart';
@@ -285,6 +289,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+  Future<void> _openSubscribeDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: SizedBox(
+          width: 980,
+          height: 640,
+          child: SubscriptionGateScreen(
+            embedded: true,
+            subscription: widget.license ??
+                const SubscriptionState(
+                  status: 'locked',
+                  plan: 'trial',
+                  trialEndsAt: null,
+                  expiresAt: null,
+                  isUnlocked: false,
+                  isTrial: true,
+                  access: PharmacyAccess.readOnly,
+                  message: 'Activate this pharmacy with a token.',
+                ),
+            onActivated: () {
+              Navigator.pop(dialogContext);
+              widget.onLicenseChanged?.call();
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   List<_DashboardDestination> get _destinations {
     if (widget.profile.isSuperAdmin) {
       return [
@@ -358,30 +392,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       return const SizedBox.shrink();
                     }
                     final title = !sync.isOnline
-                        ? 'Working without internet'
+                        ? S.t('No internet — using saved shop data', 'Hakuna intaneti — inatumia data iliyohifadhiwa')
                         : sync.isSyncing
-                            ? 'Sending saved salesâ€¦'
+                            ? S.t('Sending saved sales...', 'Inatuma mauzo yaliyohifadhiwa...')
                             : '${sync.pendingCount} saved sale${sync.pendingCount == 1 ? '' : 's'} waiting to send';
                     final subtitle = !sync.isOnline
                         ? (sync.pendingCount == 0
-                            ? 'You can still complete sales. They will send when the connection returns.'
+                            ? S.t('Sales still work on this PC. They send when the connection returns.', 'Mauzo bado yanaweza kufanyika. Yatatoka intaneti irudipo.')
                             : '${sync.pendingCount} sale${sync.pendingCount == 1 ? '' : 's'} saved on this computer.')
                         : (sync.lastError ?? 'Tap Send now if they stay here after the connection is back.');
                     return Material(
                       color: sync.isOnline ? const Color(0xffe8f6f2) : const Color(0xfffff4e5),
-                      child: ListTile(
-                        leading: Icon(
-                          sync.isOnline ? Icons.cloud_upload_outlined : Icons.wifi_off_rounded,
-                          color: sync.isOnline ? const Color(0xff0f766e) : const Color(0xffb45309),
-                        ),
-                        title: Text(title),
-                        subtitle: Text(subtitle),
-                        trailing: sync.isOnline && sync.pendingCount > 0 && !sync.isSyncing
-                            ? TextButton(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+                        child: Row(
+                          children: [
+                            Icon(
+                              sync.isOnline ? Icons.cloud_upload_outlined : Icons.wifi_off_rounded,
+                              color: sync.isOnline ? const Color(0xff0f766e) : const Color(0xffb45309),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                  Text(subtitle, style: const TextStyle(fontSize: 12, height: 1.3)),
+                                ],
+                              ),
+                            ),
+                            if (sync.isOnline && sync.pendingCount > 0 && !sync.isSyncing)
+                              TextButton(
                                 onPressed: () => unawaited(sync.syncPending()),
                                 child: const Text('Send now'),
-                              )
-                            : null,
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -401,21 +447,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
+                StreamBuilder<List<Announcement>>(
+                  stream: AnnouncementService().watchActive(),
+                  builder: (context, snapshot) {
+                    final notes = snapshot.data ?? const <Announcement>[];
+                    if (notes.isEmpty) return const SizedBox.shrink();
+                    final note = notes.first;
+                    return Material(
+                      color: const Color(0xffe8f1ff),
+                      child: ListTile(
+                        leading: const Icon(Icons.campaign_outlined, color: Color(0xff1d4ed8)),
+                        title: Text(note.title),
+                        subtitle: Text(note.body),
+                      ),
+                    );
+                  },
+                ),
                 if (widget.license?.isTrial == true && widget.readOnly == false && widget.license?.isBlocked != true)
                   Material(
-                    color: const Color(0xffe8f6f2),
+                    color: const Color(0xfffff4e5),
                     child: ListTile(
-                      leading: const Icon(Icons.hourglass_bottom_rounded, color: Color(0xff0f766e)),
+                      leading: const Icon(Icons.workspace_premium_outlined, color: Color(0xffb45309)),
                       title: Text(
                         widget.license?.trialCountdownLabel.isNotEmpty == true
                             ? widget.license!.trialCountdownLabel
-                            : (widget.license?.message ?? 'Free trial is active.'),
+                            : (widget.license?.message ?? S.t('Free trial is active.', 'Jaribio la bure linaendelea.')),
                       ),
-                      subtitle: widget.license?.licenseEndsAt == null
-                          ? null
-                          : Text(
-                              'Trial ends ${widget.license!.licenseEndsAt!.day}/${widget.license!.licenseEndsAt!.month}/${widget.license!.licenseEndsAt!.year}',
-                            ),
+                      subtitle: Text(
+                        widget.license?.licenseEndsAt == null
+                            ? S.t(
+                                'Pay for a professional plan, then enter the activation code you receive.',
+                                'Lipia mpango wa kitaalamu, kisha weka namba ya kuwezesha utakayopewa.',
+                              )
+                            : S.t(
+                                'Trial ends ${widget.license!.licenseEndsAt!.day}/${widget.license!.licenseEndsAt!.month}/${widget.license!.licenseEndsAt!.year}. After that date the shop locks until you pay and enter a code.',
+                                'Jaribio linaisha ${widget.license!.licenseEndsAt!.day}/${widget.license!.licenseEndsAt!.month}/${widget.license!.licenseEndsAt!.year}. Baada ya hiyo tarehe duka linafungwa hadi ulipe na uweke namba.',
+                              ),
+                      ),
+                      trailing: FilledButton(
+                        onPressed: _openSubscribeDialog,
+                        child: Text(S.t('Subscribe / enter code', 'Jiandikishe / weka namba')),
+                      ),
                     ),
                   ),
                 if (widget.readOnly)
@@ -425,38 +497,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       leading: const Icon(Icons.lock_clock_rounded, color: Color(0xffb45309)),
                       title: Text(
                         widget.license?.message ??
-                            'Paid subscription has ended. You can view records only until a new token is activated.',
+                            S.t(
+                              'Paid subscription has ended. You can view records only until a new token is activated.',
+                              'Usajili uliolipwa umeisha. Unaweza kuona kumbukumbu tu hadi namba mpya iwezeshwe.',
+                            ),
                       ),
                       trailing: FilledButton(
-                        onPressed: () async {
-                          await showDialog<void>(
-                            context: context,
-                            builder: (dialogContext) => Dialog(
-                              child: SizedBox(
-                                width: 520,
-                                height: 560,
-                                child: SubscriptionGateScreen(
-                                  subscription: widget.license ??
-                                      const SubscriptionState(
-                                        status: 'locked',
-                                        plan: 'trial',
-                                        trialEndsAt: null,
-                                        expiresAt: null,
-                                        isUnlocked: false,
-                                        isTrial: true,
-                                        access: PharmacyAccess.readOnly,
-                                        message: 'Activate this pharmacy with a token.',
-                                      ),
-                                  onActivated: () {
-                                    Navigator.pop(dialogContext);
-                                    widget.onLicenseChanged?.call();
-                                  },
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                        child: const Text('Activate token'),
+                        onPressed: _openSubscribeDialog,
+                        child: Text(S.t('Activate token', 'Weka namba')),
                       ),
                     ),
                   ),
@@ -803,13 +851,16 @@ class OverviewScreen extends StatefulWidget {
 
 class _OverviewScreenState extends State<OverviewScreen> {
   late Future<_OverviewData> _overviewFuture;
-  var _refreshToken = 0;
+  _OverviewData? _lastOverview;
   var _refreshing = false;
 
   @override
   void initState() {
     super.initState();
-    _overviewFuture = _loadOverviewData();
+    _overviewFuture = _loadOverviewData().then((data) {
+      _lastOverview = data;
+      return data;
+    });
   }
 
   Future<_OverviewData> _loadOverviewData({bool fromServer = false}) async {
@@ -850,7 +901,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = todayStart.add(const Duration(days: 1));
 
-    final todaySales = salesDocs.where((doc) {
+    final liveSales = salesDocs.where((doc) {
+      final status = (doc.data()['status'] as String?) ?? 'completed';
+      return status != 'voided' && status != 'refunded';
+    }).toList();
+
+    final todaySales = liveSales.where((doc) {
       final value = doc.data()['createdAt'];
       final createdAt = value is Timestamp ? value.toDate() : null;
       return createdAt != null && createdAt.isAfter(todayStart) && createdAt.isBefore(todayEnd);
@@ -876,7 +932,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     for (int offset = 6; offset >= 0; offset--) {
       final dayStart = DateTime(now.year, now.month, now.day).subtract(Duration(days: offset));
       final nextDay = dayStart.add(const Duration(days: 1));
-      final dayRevenue = salesDocs.where((doc) {
+      final dayRevenue = liveSales.where((doc) {
         final value = doc.data()['createdAt'];
         final createdAt = value is Timestamp ? value.toDate() : null;
         return createdAt != null && !createdAt.isBefore(dayStart) && createdAt.isBefore(nextDay);
@@ -884,7 +940,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
       weeklyRevenue.add(_WeeklyRevenuePoint(day: dayStart, revenueMinor: dayRevenue));
     }
 
-    final sortedSales = salesDocs.toList()
+    final sortedSales = liveSales.toList()
       ..sort((a, b) {
         final left = a.data()['createdAt'];
         final right = b.data()['createdAt'];
@@ -892,17 +948,32 @@ class _OverviewScreenState extends State<OverviewScreen> {
         final rightDate = right is Timestamp ? right.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
         return rightDate.compareTo(leftDate);
       });
-    final recentSales = sortedSales.take(5).map((doc) {
+    final recentDocs = sortedSales.take(5).toList();
+    final recentSales = <_RecentSaleEntry>[];
+    for (final doc in recentDocs) {
       final data = doc.data();
       final createdAt = (data['createdAt'] is Timestamp) ? (data['createdAt'] as Timestamp).toDate() : DateTime.now();
-      return _RecentSaleEntry(
-        id: doc.id,
-        receiptNumber: (data['receiptNumber'] as String?) ?? 'Receipt',
-        totalMinor: (data['totalMinor'] as num?)?.toInt() ?? 0,
-        paymentMethod: (data['paymentMethod'] as String?) ?? 'cash',
-        createdAt: createdAt,
+      var names = ((data['itemNames'] as List?) ?? const []).whereType<String>().where((name) => name.trim().isNotEmpty).toList();
+      if (names.isEmpty) {
+        try {
+          final items = await doc.reference.collection(FirestoreCollections.saleItems).get();
+          names = items.docs
+              .map((item) => (item.data()['medicineName'] as String?) ?? '')
+              .where((name) => name.trim().isNotEmpty)
+              .toList();
+        } catch (_) {}
+      }
+      recentSales.add(
+        _RecentSaleEntry(
+          id: doc.id,
+          receiptNumber: (data['receiptNumber'] as String?) ?? 'Receipt',
+          totalMinor: (data['totalMinor'] as num?)?.toInt() ?? 0,
+          paymentMethod: (data['paymentMethod'] as String?) ?? 'cash',
+          createdAt: createdAt,
+          medicineNames: names,
+        ),
       );
-    }).toList();
+    }
 
     final healthyStockCount = medicines.length - lowStockCount;
     final totalUnits = medicines.fold<int>(0, (total, doc) => total + ((doc.data()['quantityOnHand'] as num?)?.toInt() ?? 0));
@@ -944,30 +1015,38 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final next = _loadOverviewData(fromServer: true);
     setState(() {
       _refreshing = true;
-      _refreshToken++;
       _overviewFuture = next;
     });
     try {
-      await next;
+      _lastOverview = await next;
     } finally {
       if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  Future<void> _voidSale(_RecentSaleEntry sale) async {
+    try {
+      await SalesService().voidSale(sale.id);
+      if (!mounted) return;
+      showAppNotice(context, S.t('Sale voided. Stock put back.', 'Mauzo yamefutwa. Stock imerudishwa.'));
+      await _refresh();
+    } catch (error) {
+      if (mounted) showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_OverviewData>(
-      key: ValueKey(_refreshToken),
       future: _overviewFuture,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(child: Text('Could not load overview: ${snapshot.error}'));
         }
-        if (!snapshot.hasData) {
+        final summary = snapshot.data ?? _lastOverview;
+        if (summary == null) {
           return const Center(child: CircularProgressIndicator());
         }
-
-        final summary = snapshot.data!;
         final canSeeSales = widget.profile.canSeeSalesTotals;
         return RefreshIndicator(
           onRefresh: _refresh,
@@ -1053,10 +1132,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 Expanded(
                   child: canSeeSales
                       ? _MetricCard(label: S.t("Today's sales", 'Mauzo ya leo'), value: 'TZS ${summary.todaySalesMinor}', note: S.t('${summary.todaySalesCount} completed sales', 'Mauzo ${summary.todaySalesCount} yamekamilika'), icon: Icons.trending_up_rounded, color: const Color(0xffe2efff))
-                      : _MetricCard(label: S.t('Expiring in 5 days', 'Zinaisha siku 5'), value: '${summary.notifySoonCount}', note: S.t('Sell these first', 'Ziuzwe kwanza'), icon: Icons.hourglass_bottom_rounded, color: const Color(0xfffff0d7)),
+                      : _MetricCard(label: S.t('Expiring in 2 months', 'Zinaisha miezi 2'), value: '${summary.notifySoonCount}', note: S.t('Sell these first', 'Ziuzwe kwanza'), icon: Icons.hourglass_bottom_rounded, color: const Color(0xfffff0d7)),
                 ),
                 const SizedBox(width: 14),
-                Expanded(child: _MetricCard(label: S.t('Expired stock', 'Stock iliyoisha'), value: '${summary.expiredCount}', note: S.t('${summary.notifySoonCount} items within 5 days', 'Bidhaa ${summary.notifySoonCount} ndani ya siku 5'), icon: Icons.event_busy_rounded, color: const Color(0xffffeadf))),
+                Expanded(child: _MetricCard(label: S.t('Expired stock', 'Stock iliyoisha'), value: '${summary.expiredCount}', note: S.t('${summary.notifySoonCount} within 2 months', 'Bidhaa ${summary.notifySoonCount} ndani ya miezi 2'), icon: Icons.event_busy_rounded, color: const Color(0xffffeadf))),
               ]),
               if (summary.expiredCount > 0) ...[
                 const SizedBox(height: 14),
@@ -1073,7 +1152,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '${summary.expiredCount} batches have already expired. Open Medicines â†’ Expired and remove them from stock. That write-off is recorded.',
+                          '${summary.expiredCount} batches have already expired. Open Medicines → Expired and remove them from stock. That write-off is recorded.',
                           style: GoogleFonts.inter(color: const Color(0xff9a3412), fontWeight: FontWeight.w600, height: 1.4),
                         ),
                       ),
@@ -1096,7 +1175,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '${summary.expirySoonCount} batches expire within 90 days. Sell these first â€” POS already puts the nearest expiry at the top.',
+                          '${summary.expirySoonCount} batches expire within 90 days. Sell these first — POS already puts the nearest expiry at the top.',
                           style: GoogleFonts.inter(color: const Color(0xff9a3412), fontWeight: FontWeight.w600, height: 1.4),
                         ),
                       ),
@@ -1119,7 +1198,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '${summary.notifySoonCount} medicine${summary.notifySoonCount == 1 ? '' : 's'} expire within 5 days. Open the bell for details, then sell them first.',
+                          '${summary.notifySoonCount} medicine${summary.notifySoonCount == 1 ? '' : 's'} expire within 2 months. Open the bell for details, then sell them first.',
                           style: GoogleFonts.inter(color: const Color(0xff9a3412), fontWeight: FontWeight.w600, height: 1.4),
                         ),
                       ),
@@ -1199,7 +1278,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
                             context: context,
                             builder: (dialogContext) => AlertDialog(
                               title: const Text('Void sale?'),
-                              content: Text('This will reverse the sale ${firstSale.receiptNumber} and restore stock. Continue?'),
+                              content: Text(
+                                'Reverse ${firstSale.receiptNumber}?\n${firstSale.medicinesLabel}\nStock for these medicines will be restored.',
+                              ),
                               actions: [
                                 TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
                                 FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Void sale')),
@@ -1207,8 +1288,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                             ),
                           );
                           if (shouldVoid == true && mounted) {
-                            await SalesService().voidSale(firstSale.id);
-                            _refresh();
+                            await _voidSale(firstSale);
                           }
                         },
                         icon: const Icon(Icons.undo_rounded),
@@ -1221,27 +1301,44 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     if (summary.recentSales.isEmpty)
                       const Text('No sales have been recorded yet for this period.', style: TextStyle(color: Color(0xff68807d)))
                     else
-                      ...summary.recentSales.map((sale) => ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: CircleAvatar(
-                              backgroundColor: const Color(0xffe2efff),
-                              child: const Icon(Icons.receipt_long_rounded, color: Color(0xff183b3b), size: 19),
-                            ),
-                            title: Text(sale.receiptNumber, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
-                            subtitle: Text('${sale.paymentMethod.toUpperCase()} â€¢ ${sale.createdAt.day}/${sale.createdAt.month}/${sale.createdAt.year}'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
+                      ...summary.recentSales.map((sale) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
                               children: [
+                                CircleAvatar(
+                                  backgroundColor: const Color(0xffe2efff),
+                                  child: const Icon(Icons.receipt_long_rounded, color: Color(0xff183b3b), size: 19),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        sale.medicinesLabel,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xff183b3b)),
+                                      ),
+                                      Text(
+                                        '${sale.receiptNumber}  |  ${sale.paymentMethod.toUpperCase()}  |  ${sale.createdAt.day}/${sale.createdAt.month}/${sale.createdAt.year}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(color: Color(0xff68807d), fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
                                 Text('TZS ${sale.totalMinor}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
-                                if (widget.profile.can('sales.refund')) ...[
-                                  const SizedBox(width: 8),
+                                if (widget.profile.can('sales.refund'))
                                   TextButton(
                                     onPressed: () async {
                                       final confirm = await showDialog<bool>(
                                         context: context,
                                         builder: (dialogContext) => AlertDialog(
                                           title: const Text('Confirm void'),
-                                          content: Text('Reverse sale ${sale.receiptNumber}?'),
+                                          content: Text('Reverse ${sale.receiptNumber}?\n${sale.medicinesLabel}'),
                                           actions: [
                                             TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
                                             FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Yes, void')),
@@ -1249,13 +1346,11 @@ class _OverviewScreenState extends State<OverviewScreen> {
                                         ),
                                       );
                                       if (confirm == true && mounted) {
-                                        await SalesService().voidSale(sale.id);
-                                        _refresh();
+                                        await _voidSale(sale);
                                       }
                                     },
                                     child: const Text('Void'),
                                   ),
-                                ],
                               ],
                             ),
                           )),
@@ -1313,6 +1408,7 @@ class _RecentSaleEntry {
     required this.totalMinor,
     required this.paymentMethod,
     required this.createdAt,
+    this.medicineNames = const [],
   });
 
   final String id;
@@ -1320,6 +1416,14 @@ class _RecentSaleEntry {
   final int totalMinor;
   final String paymentMethod;
   final DateTime createdAt;
+  final List<String> medicineNames;
+
+  String get medicinesLabel {
+    if (medicineNames.isEmpty) return 'Medicines not listed';
+    if (medicineNames.length == 1) return medicineNames.first;
+    if (medicineNames.length == 2) return '${medicineNames[0]} | ${medicineNames[1]}';
+    return '${medicineNames[0]} + ${medicineNames.length - 1} more';
+  }
 }
 
 class _SalesBarChart extends StatelessWidget {
@@ -1570,7 +1674,7 @@ class _SalesScreenState extends State<SalesScreen> {
 
   void _onPosSearchChanged() {
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      _searchDebounce = Timer(const Duration(milliseconds: 80), () {
       if (!mounted) return;
       setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
     });
@@ -1592,6 +1696,7 @@ class _SalesScreenState extends State<SalesScreen> {
             final sellableExpiry = <String, DateTime>{};
             final expiredExpiry = <String, DateTime>{};
             final hasLiveBatches = <String, bool>{};
+            final liveBatchCount = <String, int>{};
             for (final batch in batches) {
               if (batch.quantityOnHand <= 0) continue;
               hasLiveBatches[batch.medicineId] = true;
@@ -1602,6 +1707,7 @@ class _SalesScreenState extends State<SalesScreen> {
                   expiredExpiry[batch.medicineId] = expiry;
                 }
               } else {
+                liveBatchCount[batch.medicineId] = (liveBatchCount[batch.medicineId] ?? 0) + 1;
                 sellableQty[batch.medicineId] = (sellableQty[batch.medicineId] ?? 0) + batch.quantityOnHand;
                 final current = sellableExpiry[batch.medicineId];
                 if (current == null || expiry.isBefore(current)) {
@@ -1614,7 +1720,7 @@ class _SalesScreenState extends State<SalesScreen> {
               ...sellableExpiry,
             };
             final query = _searchQuery;
-            final medicines = snapshot.data!.where((medicine) => query.isEmpty || medicine.name.toLowerCase().contains(query) || medicine.sku.toLowerCase().contains(query)).toList()
+            final medicines = MedicineMatch.unique(snapshot.data!.where((medicine) => query.isEmpty || medicine.name.toLowerCase().contains(query) || medicine.sku.toLowerCase().contains(query)).toList())
               ..sort((a, b) {
                 final aExpiry = statusExpiry[a.id];
                 final bExpiry = statusExpiry[b.id];
@@ -1652,12 +1758,12 @@ class _SalesScreenState extends State<SalesScreen> {
                   title: S.t('Sales & POS', 'Mauzo na POS'),
                   subtitle: expiredCount > 0
                       ? S.t(
-                          '$sellFirstCount medicines should be sold first. $expiredCount already expired â€” they cannot be sold.',
+                          '$sellFirstCount medicines should be sold first. $expiredCount already expired — they cannot be sold.',
                           'Dawa $sellFirstCount ziuzwe kwanza. $expiredCount zimeisha muda â€” haziwezi kuuzwa.',
                         )
                       : sellFirstCount > 0
                       ? S.t(
-                          '$sellFirstCount medicines should be sold first â€” nearest expiry is at the top.',
+                          '$sellFirstCount medicines should be sold first — nearest expiry is at the top.',
                           'Dawa $sellFirstCount ziuzwe kwanza â€” zinazoisha karibu ziko juu.',
                         )
                       : S.t(
@@ -1671,7 +1777,7 @@ class _SalesScreenState extends State<SalesScreen> {
                 Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Expanded(
                   flex: 3,
-                  child: _PremiumPanel(child: _ProductPicker(medicines: medicines, cart: _cart, nearestExpiry: statusExpiry, sellableQty: _sellableByMedicine, controller: _searchController, onSearch: _onPosSearchChanged, onAdd: _addToCart)),
+                  child: _PremiumPanel(child: _ProductPicker(medicines: medicines, cart: _cart, nearestExpiry: statusExpiry, sellableQty: _sellableByMedicine, liveBatchCount: liveBatchCount, controller: _searchController, onSearch: _onPosSearchChanged, onAdd: _addToCart)),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -1711,7 +1817,8 @@ class _SalesScreenState extends State<SalesScreen> {
             title: Text(medicine.name),
             content: SizedBox(
               width: 440,
-              child: Column(
+              child: SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1758,12 +1865,12 @@ class _SalesScreenState extends State<SalesScreen> {
                                 Expanded(
                                   child: Text(
                                     unit.id == 'pack'
-                                        ? S.t('Whole pack (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}', 'Pakiti nzima (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}')
+                                        ? S.t('Whole pack (${unit.toBase})  -  TZS ${unit.unitPriceMinor}', 'Pakiti nzima (${unit.toBase})  -  TZS ${unit.unitPriceMinor}')
                                         : unit.id == 'box'
-                                            ? S.t('Box (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}', 'Boksi (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}')
+                                            ? S.t('Box (${unit.toBase})  -  TZS ${unit.unitPriceMinor}', 'Boksi (${unit.toBase})  -  TZS ${unit.unitPriceMinor}')
                                             : unit.id == 'strip'
-                                                ? S.t('Strip (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}', 'Strip (${unit.toBase})  Â·  TZS ${unit.unitPriceMinor}')
-                                                : S.t('${unit.label}  Â·  TZS ${unit.unitPriceMinor} each', '${unit.label}  Â·  TZS ${unit.unitPriceMinor} moja'),
+                                                ? S.t('Strip (${unit.toBase})  -  TZS ${unit.unitPriceMinor}', 'Strip (${unit.toBase})  -  TZS ${unit.unitPriceMinor}')
+                                                : S.t('${unit.label}  -  TZS ${unit.unitPriceMinor} each', '${unit.label}  -  TZS ${unit.unitPriceMinor} moja'),
                                     style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b)),
                                   ),
                                 ),
@@ -1794,6 +1901,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w800),
                   ),
                 ],
+                ),
               ),
             ),
             actions: [
@@ -1945,8 +2053,8 @@ class _SalesScreenState extends State<SalesScreen> {
   Future<void> _checkout(int total, int discount) async {
     if (!widget.profile.can('sales.create')) {
       setState(() => _message = S.t(
-            'This login can view Sales but cannot complete a sale. Ask admin to tick â€œComplete a saleâ€.',
-            'Login hii inaona Sales lakini haiwezi kuhifadhi mauzo. Mwambie admin atike â€œKamilisha mauzoâ€.',
+            'This login can view sales but cannot complete them. Ask a shop admin to grant Complete sales.',
+            'Login hii inaona mauzo lakini haiwezi kuyakamilisha. Mwambie admin wa duka atike Kamilisha mauzo.',
           ));
       return;
     }
@@ -1989,7 +2097,7 @@ class _SalesScreenState extends State<SalesScreen> {
         discountMinor: appliedDiscount,
         totalMinor: _cart.values.fold<int>(0, (value, item) => value + item.totalMinor) - appliedDiscount,
         createdAt: DateTime.now(),
-        items: _cart.values.map((item) => ReceiptLineItem(name: '${item.medicineName} Â· ${item.receiptCaption}', quantity: item.quantity, unitPriceMinor: item.unitPriceMinor, totalMinor: item.totalMinor)).toList(),
+        items: _cart.values.map((item) => ReceiptLineItem(name: '${item.medicineName} - ${item.receiptCaption}', quantity: item.quantity, unitPriceMinor: item.unitPriceMinor, totalMinor: item.totalMinor)).toList(),
       );
       if (mounted) {
         if (_printerSettings.autoPrintAfterSale) {
@@ -1998,13 +2106,20 @@ class _SalesScreenState extends State<SalesScreen> {
         setState(() {
           _cart.clear();
           _discountController.text = '0';
-          _message = receiptNumber.startsWith('L-')
-              ? 'Sale saved on this computer. Receipt $receiptNumber. It will send when internet returns.'
-              : 'Sale completed. Receipt $receiptNumber. ${_printerSettings.autoPrintAfterSale ? 'Printed.' : 'Print when you choose.'}';
+          _message = null;
         });
+        showAppNotice(
+          context,
+          receiptNumber.startsWith('L-')
+              ? S.t('Sale saved offline', 'Mauzo yamehifadhiwa nje ya mtandao')
+              : S.t('Sale complete', 'Mauzo yamekamilika'),
+        );
       }
     } catch (error) {
-      if (mounted) setState(() => _message = error.toString().replaceFirst('Bad state: ', ''));
+      if (mounted) {
+        showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
+        setState(() => _message = null);
+      }
     } finally {
       if (mounted) setState(() => _checkingOut = false);
     }
@@ -2078,13 +2193,21 @@ class _PageChrome extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: GoogleFonts.playfairDisplay(fontSize: 26, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink, height: 1.1)),
+                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.playfairDisplay(fontSize: 26, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink, height: 1.1)),
                 const SizedBox(height: 4),
-                Text(subtitle, style: GoogleFonts.inter(color: PhyimacyBrand.muted, fontSize: 14)),
+                Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: PhyimacyBrand.muted, fontSize: 14)),
               ],
             ),
           ),
-          if (trailing != null) trailing!,
+          if (trailing != null) ...[
+            const SizedBox(width: 12),
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FittedBox(fit: BoxFit.scaleDown, child: trailing!),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2119,25 +2242,26 @@ class _WorkspaceTabs extends StatelessWidget {
                   onTap: () => onChanged(i),
                   borderRadius: BorderRadius.circular(14),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Row(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(icons[i], size: 18, color: index == i ? Colors.white : PhyimacyBrand.teal),
                         const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            labels[i],
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w700,
-                              fontSize: labels.length > 3 ? 12 : 15,
-                              color: index == i ? Colors.white : PhyimacyBrand.ink,
-                            ),
+                        Text(
+                          labels[i],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w700,
+                            fontSize: labels.length > 3 ? 12 : 15,
+                            color: index == i ? Colors.white : PhyimacyBrand.ink,
                           ),
                         ),
                       ],
+                    ),
                     ),
                   ),
                 ),
@@ -2150,11 +2274,12 @@ class _WorkspaceTabs extends StatelessWidget {
 }
 
 class _ProductPicker extends StatelessWidget {
-  const _ProductPicker({required this.medicines, required this.cart, required this.nearestExpiry, required this.sellableQty, required this.controller, required this.onSearch, required this.onAdd});
+  const _ProductPicker({required this.medicines, required this.cart, required this.nearestExpiry, required this.sellableQty, required this.liveBatchCount, required this.controller, required this.onSearch, required this.onAdd});
   final List<Medicine> medicines;
   final Map<String, SaleCartItem> cart;
   final Map<String, DateTime> nearestExpiry;
   final Map<String, int> sellableQty;
+  final Map<String, int> liveBatchCount;
   final TextEditingController controller;
   final VoidCallback onSearch;
   final ValueChanged<Medicine> onAdd;
@@ -2190,7 +2315,7 @@ class _ProductPicker extends StatelessWidget {
                       maxCrossAxisExtent: 280,
                       mainAxisSpacing: 14,
                       crossAxisSpacing: 14,
-                      mainAxisExtent: 236,
+                      mainAxisExtent: 248,
                     ),
                     itemBuilder: (context, index) {
                       final medicine = medicines[index];
@@ -2272,15 +2397,19 @@ class _ProductPicker extends StatelessWidget {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(
+                                    child: FittedBox(
+                                      alignment: Alignment.centerLeft,
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
                                       medicine.tracksBaseUnits
                                           ? 'TZS ${medicine.piecePriceMinor}/${medicine.baseLabel.toLowerCase()}'
                                           : 'TZS ${medicine.sellingPriceMinor}',
                                       maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xff0f766e)),
                                     ),
+                                    ),
                                   ),
+                                  const SizedBox(width: 8),
                                   FilledButton(
                                     style: FilledButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -2295,9 +2424,13 @@ class _ProductPicker extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                expiry == null
-                                    ? '${medicine.stockLabel(remaining)} available'
-                                    : '${medicine.stockLabel(remaining)}  â€¢  ${ExpiryPriority.label(expiry)}',
+                                [
+                                  expiry == null
+                                      ? '${medicine.stockLabel(remaining)} available'
+                                      : '${medicine.stockLabel(remaining)}  |  ${ExpiryPriority.label(expiry)}',
+                                  if ((liveBatchCount[medicine.id] ?? 0) > 1)
+                                    '${liveBatchCount[medicine.id]} batches',
+                                ].join('  |  '),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontSize: 12, color: expired || urgent ? const Color(0xffc2410c) : const Color(0xff68807d), fontWeight: expired || urgent ? FontWeight.w700 : FontWeight.w500),
@@ -2344,7 +2477,7 @@ class _CartPanel extends StatelessWidget {
         children: [
           Text(item.medicineName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
           const SizedBox(height: 4),
-          Text('${item.receiptCaption} Ã— TZS ${item.unitPriceMinor}', style: const TextStyle(fontSize: 13.5, color: Color(0xff68807d))),
+          Text('${item.receiptCaption} x TZS ${item.unitPriceMinor}', style: const TextStyle(fontSize: 13.5, color: Color(0xff68807d))),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -2427,7 +2560,16 @@ class _CartPanel extends StatelessWidget {
           ], onChanged: (value) { if (value != null) onPaymentChanged(value); }),
           const SizedBox(height: 12),
           _SaleTotalRow(label: S.t('Total', 'Jumla'), value: total, prominent: true),
-          if (message != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(message!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xffb45309)))),
+          if (message != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                message!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Color(0xff68807d), fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -2519,13 +2661,16 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _PageChrome(
           title: S.t('Purchases', 'Manunuzi'),
-          subtitle: S.t('Receive incoming stock and keep supplier contacts in one place.', 'Pokea stock inayoingia na wasambazaji mahali pamoja.'),
+          subtitle: S.t(
+            'Receive stock here. Quantity is added on Medicines and a batch appears on Inventory. Storekeepers use this page to bring products in.',
+            'Pokea stock hapa. Idadi inaongezwa kwenye Dawa, na batch inaonekana kwenye Inventory. Storekeeper anatumia ukurasa huu kuingiza bidhaa.',
+          ),
           icon: Icons.shopping_cart_outlined,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (_tab == 0 && (widget.profile.can('purchases.create') || widget.profile.can('purchases.receive')))
-                FilledButton.icon(onPressed: () => _showPurchaseDialog(context, service), icon: const Icon(Icons.add_shopping_cart_outlined), label: Text(S.t('Receive purchase', 'Pokea ununuzi'))),
+                FilledButton.icon(onPressed: () => showReceivePurchaseDialog(context, service), icon: const Icon(Icons.add_shopping_cart_outlined), label: Text(S.t('Receive purchase', 'Pokea ununuzi'))),
               if (_tab == 1 && widget.profile.can('suppliers.manage'))
                 FilledButton.icon(onPressed: () => _showSupplierDialog(context, service), icon: const Icon(Icons.person_add_alt_1_outlined), label: Text(S.t('Add supplier', 'Ongeza msambazaji'))),
             ],
@@ -2568,10 +2713,18 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                               child: Icon(Icons.shopping_cart_outlined, color: Color(0xffc2410c)),
                             ),
                             title: Text(
-                              purchase.invoiceNumber?.isNotEmpty == true ? purchase.invoiceNumber! : 'Purchase ${purchase.id.substring(0, 6)}',
+                              purchase.medicineName?.trim().isNotEmpty == true
+                                  ? purchase.medicineName!
+                                  : (purchase.invoiceNumber?.isNotEmpty == true ? purchase.invoiceNumber! : 'Purchase ${purchase.id.substring(0, 6)}'),
                               style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xff143230)),
                             ),
-                            subtitle: Text('Supplier: ${purchase.supplierId}  â€¢  ${purchase.status}'),
+                            subtitle: Text(
+                              [
+                                if ((purchase.supplierName ?? '').trim().isNotEmpty) purchase.supplierName!,
+                                if (purchase.quantity != null) '+${purchase.quantity} added to stock',
+                                purchase.status,
+                              ].join('  |  '),
+                            ),
                             trailing: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(color: PhyimacyBrand.cream, borderRadius: BorderRadius.circular(999)),
@@ -2630,148 +2783,6 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     phone.dispose();
   }
 
-  Future<void> _showPurchaseDialog(BuildContext context, PurchaseService service) async {
-    final medicines = await MedicineService().watchMedicines().first;
-    final suppliers = await service.watchSuppliers().first;
-    if (!context.mounted) return;
-    if (medicines.isEmpty || suppliers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add at least one supplier and one medicine before receiving stock.')),
-      );
-      return;
-    }
-
-    final formKey = GlobalKey<FormState>();
-    String supplierId = suppliers.first.id;
-    String medicineId = medicines.first.id;
-    final batch = TextEditingController();
-    final quantity = TextEditingController();
-    final cost = TextEditingController();
-    final invoice = TextEditingController();
-    DateTime expiry = DateTime.now().add(const Duration(days: 365));
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Receive purchase'),
-          content: SizedBox(
-            width: 480,
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: supplierId,
-                    decoration: const InputDecoration(labelText: 'Supplier'),
-                    items: [for (final supplier in suppliers) DropdownMenuItem(value: supplier.id, child: Text(supplier.name))],
-                    onChanged: (value) => setState(() => supplierId = value ?? supplierId),
-                    validator: (value) => value == null || value.isEmpty ? 'Select a supplier' : null,
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    initialValue: medicineId,
-                    decoration: const InputDecoration(labelText: 'Medicine'),
-                    items: [for (final medicine in medicines) DropdownMenuItem(value: medicine.id, child: Text(medicine.name))],
-                    onChanged: (value) => setState(() => medicineId = value ?? medicineId),
-                    validator: (value) => value == null || value.isEmpty ? 'Select a medicine' : null,
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(controller: invoice, decoration: const InputDecoration(labelText: 'Invoice number (optional)')),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: batch,
-                    decoration: const InputDecoration(labelText: 'Batch number'),
-                    validator: (value) => value == null || value.trim().isEmpty ? 'Batch number is required' : null,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: quantity,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Quantity'),
-                          validator: (value) {
-                            final parsed = int.tryParse(value ?? '');
-                            if (parsed == null || parsed <= 0) return 'Enter a valid quantity';
-                            return null;
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: cost,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Unit cost (TZS)'),
-                          validator: (value) {
-                            final parsed = int.tryParse(value ?? '');
-                            if (parsed == null || parsed < 0) return 'Enter a valid cost';
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Expiry date'),
-                    subtitle: Text('${expiry.day}/${expiry.month}/${expiry.year}'),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(const Duration(days: 3650)),
-                        initialDate: expiry,
-                      );
-                      if (picked != null) setState(() => expiry = picked);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                final user = AuthService().currentUser;
-                final amount = int.tryParse(quantity.text);
-                final unitCost = int.tryParse(cost.text);
-                if (user == null || amount == null || unitCost == null || amount <= 0 || unitCost < 0) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('Enter valid quantity and cost before saving.')),
-                  );
-                  return;
-                }
-                await service.receivePurchase(
-                  supplierId: supplierId,
-                  medicineId: medicineId,
-                  batchNumber: batch.text,
-                  expiryDate: expiry,
-                  quantity: amount,
-                  unitCostMinor: unitCost,
-                  createdBy: user.uid,
-                  invoiceNumber: invoice.text,
-                );
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-              },
-              child: const Text('Receive stock'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    batch.dispose();
-    quantity.dispose();
-    cost.dispose();
-    invoice.dispose();
-  }
 }
 
 class _EmptyPurchaseState extends StatelessWidget {
@@ -2791,7 +2802,11 @@ class _EmptyPurchaseState extends StatelessWidget {
             const SizedBox(height: 16),
             Text('No purchases yet', style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
             const SizedBox(height: 8),
-            const Text('Add a supplier, then receive stock.', style: TextStyle(color: Color(0xff68807d))),
+            const Text(
+              'Add a supplier, then tap Receive purchase. Search an existing medicine or tap New if it is not on the list.',
+              style: TextStyle(color: Color(0xff68807d)),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       );
@@ -3135,9 +3150,10 @@ class TeamAccessScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Team', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
-        const SizedBox(height: 6),
-        const Text('Add cashiers, pharmacists, and storekeepers for this pharmacy. The shop admin login is created with the pharmacy.', style: TextStyle(color: Color(0xff68807d))),
+        Text(
+          S.t('Add cashiers, pharmacists, and storekeepers for this pharmacy. The shop admin is created with the pharmacy and already has full shop access.', 'Ongeza cashier, pharmacist, na storekeeper. Admin wa duka anaundwa pamoja na duka na anapata ruhusa zote za duka.'),
+          style: const TextStyle(color: Color(0xff68807d), height: 1.4),
+        ),
         const SizedBox(height: 16),
         if (isShopAdmin)
           Align(
@@ -3190,7 +3206,7 @@ class TeamAccessScreen extends StatelessWidget {
                       user.role,
                       user.isActive ? 'Active' : 'Inactive',
                       if ((user.pharmacyId ?? '').trim().isNotEmpty) 'Shop linked',
-                    ].join('  â€¢  '),
+                    ].join('  |  '),
                   ),
                   trailing: Wrap(
                     spacing: 4,
@@ -3361,6 +3377,8 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
                   'pack_size': row.packSize.toString(),
                   'strip_size': row.stripSize.toString(),
                   'box_size': row.boxSize.toString(),
+                  'min_sale_qty': row.minSaleQty.toString(),
+                  'stock_as': row.openingAsTablets ? 'tablets' : 'packs',
                   'buying_price': row.buyingPriceMinor.toString(),
                   'selling_price': row.sellingPriceMinor.toString(),
                   'reorder_level': row.reorderLevel.toString(),
@@ -3549,6 +3567,19 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
               spacing: 8,
               runSpacing: 8,
               children: MedicineImportService.requiredHeaders.map((header) => Chip(label: Text(header))).toList(),
+            ),
+            const SizedBox(height: 16),
+            const Text('Optional columns', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+            const SizedBox(height: 8),
+            const Text(
+              'Leave blank if not needed. For tablets, stock_as = tablets (count) or packs. min_sale_qty defaults to 5 for tablets. Liquids stay whole items.',
+              style: TextStyle(color: Color(0xff68807d)),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: MedicineImportService.optionalHeaders.map((header) => Chip(label: Text(header))).toList(),
             ),
           ],
         ),
@@ -3999,6 +4030,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
   late int _tab = widget.initialTab.clamp(0, 3);
 
   @override
+  void initState() {
+    super.initState();
+    MedicineService().consolidateDuplicateMedicinesOnce();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final service = MedicineService();
     return Padding(
@@ -4105,7 +4142,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                 children: [
                   ListTile(
                     leading: const Icon(Icons.event_busy_rounded, color: Color(0xffc2410c)),
-                    title: Text('${expired.length} expired items  â€¢  $units units'),
+                    title: Text('${expired.length} expired items  |  $units units'),
                     subtitle: const Text('Remove them from stock. The quantity is recorded as an expiry write-off.'),
                     trailing: widget.profile.can('inventory.adjust')
                         ? FilledButton(
@@ -4128,7 +4165,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               line.sku,
                               if (line.batchNumber != null && line.batchNumber!.isNotEmpty) 'Batch ${line.batchNumber}',
                               ExpiryPriority.label(line.expiry),
-                            ].where((part) => part.isNotEmpty).join('  â€¢  '),
+                            ].where((part) => part.isNotEmpty).join('  |  '),
                           ),
                           trailing: Wrap(
                             spacing: 10,
@@ -4189,7 +4226,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
       builder: (context, snapshot) {
         if (snapshot.hasError) return Center(child: Text('Could not load medicines: ${snapshot.error}'));
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final medicines = snapshot.data!;
+        final medicines = MedicineMatch.unique(snapshot.data!);
         if (medicines.isEmpty) {
           return Container(
             decoration: BoxDecoration(
@@ -4235,16 +4272,19 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               : 'In stock';
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-                    title: Text(medicine.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    title: Text(medicine.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Text(
                       [
                         medicine.sku,
                         medicine.stockLabel(),
                         if (medicine.sellsLoose) 'Loose sale on',
                         if (statusExpiry != null) ExpiryPriority.label(statusExpiry),
-                      ].join('  â€¢  '),
+                      ].join('  |  '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: Row(
+                    trailing: FittedBox(
+                      child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (widget.profile.can('medicines.update'))
@@ -4262,6 +4302,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           child: Text(badge, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                         ),
                       ],
+                    ),
                     ),
                     onTap: () => _showBatches(context, service, medicine),
                   );
@@ -4285,7 +4326,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     final reorderLevel = TextEditingController(text: medicine == null ? '10' : '${medicine.reorderLevel}');
     final openingQty = TextEditingController();
     final batchNumber = TextEditingController();
-    final packSize = TextEditingController(text: medicine == null ? '20' : '${medicine.packSize}');
+    final packSize = TextEditingController(text: medicine == null ? '1' : '${medicine.packSize}');
     final stripSize = TextEditingController(text: medicine == null || medicine.stripSize <= 0 ? '' : '${medicine.stripSize}');
     final boxSize = TextEditingController(text: medicine == null || medicine.boxSize <= 0 ? '' : '${medicine.boxSize}');
     final minSaleQty = TextEditingController(
@@ -4296,6 +4337,9 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     String? selectedCategoryId = medicine?.categoryId;
     var prescription = medicine?.requiresPrescription ?? false;
     var baseUnit = BaseUnits.normalize(medicine?.unit ?? 'Tablet');
+    var stockByTablets = medicine == null
+        ? true
+        : medicine.canSellPiecesByType && medicine.packSize <= 1;
     DateTime? expiryDate = medicine?.expiryDate?.toDate();
     await showDialog<void>(
       context: context,
@@ -4344,8 +4388,8 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         decoration: InputDecoration(
                           labelText: S.t('This is a', 'Hii ni'),
                           helperText: S.t(
-                            'Tablet: cashier can sell pieces. Bottle/tube: whole item.',
-                            'Kidonge: cashier anaweza kuuza moja moja. Chupa/tube: kitu kizima.',
+                            'Tablet or capsule: sell from 5 pieces. Bottle/syrup: whole item only.',
+                            'Kidonge: uza kuanzia vidonge 5. Chupa/maji: kipande kizima tu.',
                           ),
                           prefixIcon: const Icon(Icons.inventory_2_outlined, size: 19),
                         ),
@@ -4353,9 +4397,11 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         onChanged: (value) => setDialogState(() {
                           baseUnit = value ?? baseUnit;
                           unit.text = baseUnit;
-                          if (baseUnit == 'Tablet' || baseUnit == 'Capsule' || baseUnit == 'Piece') {
-                            if ((int.tryParse(packSize.text) ?? 1) <= 1) packSize.text = '20';
+                          if (BaseUnits.sellsByPiece(baseUnit)) {
+                            if (stockByTablets) packSize.text = '1';
+                            if ((int.tryParse(minSaleQty.text) ?? 0) < 1) minSaleQty.text = '5';
                           } else {
+                            stockByTablets = false;
                             packSize.text = '1';
                           }
                         }),
@@ -4435,8 +4481,36 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         },
                       ),
                       const SizedBox(height: 22),
-                      _FormSectionLabel(S.t('Price & pack size', 'Bei na ukubwa wa pakiti')),
+                      _FormSectionLabel(S.t('Price & stock', 'Bei na stock')),
                       const SizedBox(height: 10),
+                      if (BaseUnits.sellsByPiece(baseUnit)) ...[
+                        Text(S.t('How do you want to enter stock?', 'Unataka kuingiza stock vipi?'), style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
+                        const SizedBox(height: 8),
+                        SegmentedButton<bool>(
+                          segments: [
+                            ButtonSegment(
+                              value: true,
+                              label: Text(S.t('By tablet count', 'Kwa idadi ya vidonge')),
+                              icon: const Icon(Icons.medication_outlined, size: 18),
+                            ),
+                            ButtonSegment(
+                              value: false,
+                              label: Text(S.t('By pack', 'Kwa pakiti')),
+                              icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                            ),
+                          ],
+                          selected: {stockByTablets},
+                          onSelectionChanged: (value) => setDialogState(() {
+                            stockByTablets = value.first;
+                            if (stockByTablets) {
+                              packSize.text = '1';
+                            } else if ((int.tryParse(packSize.text) ?? 1) <= 1) {
+                              packSize.text = '10';
+                            }
+                          }),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       Row(children: [
                         Expanded(child: _numberField(purchasePrice, S.t('Buying price (TZS)', 'Bei ya kununua (TZS)'), icon: Icons.payments_outlined)),
                         const SizedBox(width: 12),
@@ -4445,63 +4519,61 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             controller: sellingPrice,
                             keyboardType: TextInputType.number,
                             onChanged: (_) => setDialogState(() {}),
-                            decoration: InputDecoration(labelText: S.t('Selling price of one pack / item (TZS)', 'Bei ya kuuza ya pakiti / kipande kimoja (TZS)'), prefixIcon: const Icon(Icons.sell_outlined, size: 19)),
+                            decoration: InputDecoration(
+                              labelText: BaseUnits.sellsByPiece(baseUnit) && stockByTablets
+                                  ? S.t('Selling price of one tablet (TZS)', 'Bei ya kuuza ya kidonge kimoja (TZS)')
+                                  : BaseUnits.sellsByPiece(baseUnit)
+                                      ? S.t('Selling price of one pack (TZS)', 'Bei ya kuuza ya pakiti moja (TZS)')
+                                      : S.t('Selling price of one item (TZS)', 'Bei ya kuuza ya kipande kimoja (TZS)'),
+                              prefixIcon: const Icon(Icons.sell_outlined, size: 19),
+                            ),
                             validator: (value) => int.tryParse(value ?? '') == null ? S.t('Enter a whole number', 'Weka namba kamili') : null,
                           ),
                         ),
                       ]),
                       const SizedBox(height: 10),
                       _numberField(reorderLevel, S.t('Alert me when stock reaches', 'Niarifu stock ikifika'), icon: Icons.warning_amber_rounded),
-                      const SizedBox(height: 10),
-                      TextFormField(
-                        controller: packSize,
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => setDialogState(() {}),
-                        decoration: InputDecoration(
-                          labelText: S.t('How many in one pack? (1 = whole bottle/tube)', 'Vidonge ngapi kwenye pack? (1 = chupa/tube nzima)'),
-                          prefixIcon: const Icon(Icons.grid_view_rounded, size: 19),
-                        ),
-                        validator: (value) => int.tryParse(value ?? '') == null ? S.t('Enter a whole number', 'Weka namba kamili') : null,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        () {
-                          final pack = int.tryParse(packSize.text.trim()) ?? 1;
-                          final price = int.tryParse(sellingPrice.text.trim()) ?? 0;
-                          if (pack <= 1) {
-                            return S.t(
-                              'On Sales the cashier only enters how many bottles/tubes. No Edit needed.',
-                              'Kwenye Sales cashier anaingiza tu chupa/tube ngapi. Hakuna Edit.',
-                            );
-                          }
-                          if (price <= 0) {
-                            return S.t(
-                              'On Sales the cashier picks tablet or pack. They do not need Edit permission.',
-                              'Kwenye Sales cashier anachagua kidonge au pakiti. Hahitaji ruhusa ya Edit.',
-                            );
-                          }
-                          return S.t(
-                            'One piece = TZS ${(price / pack).round()}. On Sales pick tablet or pack â€” no Edit needed.',
-                            'Kidonge kimoja = TZS ${(price / pack).round()}. Kwenye Sales chagua kidonge au pakiti â€” hakuna Edit.',
-                          );
-                        }(),
-                        style: const TextStyle(color: Color(0xff0f766e), height: 1.35),
-                      ),
-                      const SizedBox(height: 10),
-                      if ((int.tryParse(packSize.text.trim()) ?? 1) > 1)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _numberField(
-                            minSaleQty,
-                            S.t('Minimum tablets per sale (e.g. 5)', 'Vidonge vichache kabisa kwa mauzo (mf. 5)'),
-                            icon: Icons.filter_5_rounded,
+                      if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets) ...[
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: packSize,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: InputDecoration(
+                            labelText: S.t('Tablets in one pack', 'Vidonge kwenye pakiti moja'),
+                            prefixIcon: const Icon(Icons.grid_view_rounded, size: 19),
                           ),
+                          validator: (value) {
+                            final parsed = int.tryParse(value ?? '');
+                            if (parsed == null || parsed < 2) return S.t('Enter 2 or more', 'Weka 2 au zaidi');
+                            return null;
+                          },
                         ),
-                      Row(children: [
-                        Expanded(child: TextFormField(controller: stripSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Strip size (optional)', 'Ukubwa wa strip (si lazima)'), helperText: S.t('e.g. 10', 'mf. 10'), prefixIcon: const Icon(Icons.view_week_outlined, size: 19)))),
-                        const SizedBox(width: 12),
-                        Expanded(child: TextFormField(controller: boxSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Box size (optional)', 'Ukubwa wa boksi (si lazima)'), helperText: S.t('e.g. 100', 'mf. 100'), prefixIcon: const Icon(Icons.inventory_outlined, size: 19)))),
-                      ]),
+                      ],
+                      if (BaseUnits.sellsByPiece(baseUnit)) ...[
+                        const SizedBox(height: 10),
+                        _numberField(
+                          minSaleQty,
+                          S.t('Minimum tablets per sale (e.g. 5)', 'Vidonge vichache kabisa kwa mauzo (mf. 5)'),
+                          icon: Icons.filter_5_rounded,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          S.t(
+                            'Syrups and other liquids are sold whole. Only tablets/capsules can be sold from 5 pieces.',
+                            'Dawa za maji zinauzwa zima. Vidonge/capsule tu ndivyo vinavyouzwa kuanzia 5.',
+                          ),
+                          style: const TextStyle(color: Color(0xff0f766e), height: 1.35),
+                        ),
+                      ],
+                      if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets) ...[
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          Expanded(child: TextFormField(controller: stripSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Strip size (optional)', 'Ukubwa wa strip (si lazima)'), helperText: S.t('e.g. 10', 'mf. 10'), prefixIcon: const Icon(Icons.view_week_outlined, size: 19)))),
+                          const SizedBox(width: 12),
+                          Expanded(child: TextFormField(controller: boxSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Box size (optional)', 'Ukubwa wa boksi (si lazima)'), helperText: S.t('e.g. 100', 'mf. 100'), prefixIcon: const Icon(Icons.inventory_outlined, size: 19)))),
+                        ]),
+                      ],
                       const SizedBox(height: 10),
                       _FormSectionLabel(S.t('Expiry', 'Kuisha')),
                       const SizedBox(height: 6),
@@ -4513,7 +4585,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               ? S.t('Expiry date (required for opening stock)', 'Tarehe ya kuisha (lazima kwa stock ya kwanza)')
                               : S.t('Expires ${expiryDate!.day}/${expiryDate!.month}/${expiryDate!.year}', 'Inaisha ${expiryDate!.day}/${expiryDate!.month}/${expiryDate!.year}'),
                         ),
-                        subtitle: Text(S.t('Used for the 5-day warning and Expired tab', 'Inatumika kwa onyo la siku 5 na kichupo cha Expired')),
+                        subtitle: Text(S.t('Used for the 2-month warning and Expired tab', 'Inatumika kwa onyo la miezi 2 na kichupo cha Expired')),
                         trailing: const Icon(Icons.calendar_month_rounded),
                         onTap: () async {
                           final picked = await showDatePicker(
@@ -4532,8 +4604,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             controller: openingQty,
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: (int.tryParse(packSize.text.trim()) ?? 1) > 1
-                                  ? S.t('Opening packs (optional)', 'Pakiti za kwanza (si lazima)')
+                              labelText: !editing
+                                  ? (BaseUnits.sellsByPiece(baseUnit) && stockByTablets
+                                      ? S.t('Opening tablets (optional)', 'Vidonge vya kwanza (si lazima)')
+                                      : BaseUnits.sellsByPiece(baseUnit)
+                                          ? S.t('Opening packs (optional)', 'Pakiti za kwanza (si lazima)')
+                                          : S.t('Opening quantity (optional)', 'Kiasi cha kwanza (si lazima)'))
                                   : S.t('Opening quantity (optional)', 'Kiasi cha kwanza (si lazima)'),
                               prefixIcon: const Icon(Icons.inventory_2_outlined, size: 19),
                             ),
@@ -4564,6 +4640,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           return;
                         }
                         try {
+                          final parsedPack = BaseUnits.sellsByPiece(baseUnit)
+                              ? (stockByTablets ? 1 : int.parse(packSize.text))
+                              : 1;
+                          final parsedMin = BaseUnits.sellsByPiece(baseUnit)
+                              ? (int.tryParse(minSaleQty.text.trim()) ?? 5)
+                              : 0;
                           if (editing) {
                             await service.updateMedicine(
                               medicineId: medicine.id,
@@ -4575,11 +4657,11 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               sellingPriceMinor: int.parse(sellingPrice.text),
                               reorderLevel: int.parse(reorderLevel.text),
                               requiresPrescription: prescription,
-                              packSize: int.parse(packSize.text),
-                              stripSize: int.tryParse(stripSize.text.trim()) ?? 0,
-                              boxSize: int.tryParse(boxSize.text.trim()) ?? 0,
-                              minSaleQty: int.tryParse(minSaleQty.text.trim()) ?? 0,
-                              allowLooseSale: int.parse(packSize.text) > 1,
+                              packSize: parsedPack,
+                              stripSize: stockByTablets ? 0 : int.tryParse(stripSize.text.trim()) ?? 0,
+                              boxSize: stockByTablets ? 0 : int.tryParse(boxSize.text.trim()) ?? 0,
+                              minSaleQty: parsedMin,
+                              allowLooseSale: BaseUnits.sellsByPiece(baseUnit),
                               expiryDate: expiryDate,
                             );
                           } else {
@@ -4593,13 +4675,14 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               sellingPriceMinor: int.parse(sellingPrice.text),
                               reorderLevel: int.parse(reorderLevel.text),
                               requiresPrescription: prescription,
-                              packSize: int.parse(packSize.text),
-                              stripSize: int.tryParse(stripSize.text.trim()) ?? 0,
-                              boxSize: int.tryParse(boxSize.text.trim()) ?? 0,
-                              minSaleQty: int.tryParse(minSaleQty.text.trim()) ?? 0,
-                              allowLooseSale: int.parse(packSize.text) > 1,
+                              packSize: parsedPack,
+                              stripSize: stockByTablets ? 0 : int.tryParse(stripSize.text.trim()) ?? 0,
+                              boxSize: stockByTablets ? 0 : int.tryParse(boxSize.text.trim()) ?? 0,
+                              minSaleQty: parsedMin,
+                              allowLooseSale: BaseUnits.sellsByPiece(baseUnit),
                               expiryDate: expiryDate,
                               openingQuantity: qty,
+                              openingAsTablets: stockByTablets || !BaseUnits.sellsByPiece(baseUnit),
                               batchNumber: batchNumber.text,
                               createdBy: userId,
                             );
@@ -4769,7 +4852,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _requiredField(batchNumber, 'Batch number'),
-                _numberField(quantity, medicine.sellsLoose ? 'Packs' : 'Quantity'),
+                _numberField(quantity, medicine.piecesPerPack > 1 ? 'Packs' : 'Quantity'),
                 _numberField(cost, 'Unit cost (minor units)'),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -4903,10 +4986,16 @@ class AccessDeniedScreen extends StatelessWidget {
 }
 
 class SubscriptionGateScreen extends StatefulWidget {
-  const SubscriptionGateScreen({required this.subscription, this.onActivated, super.key});
+  const SubscriptionGateScreen({
+    required this.subscription,
+    this.onActivated,
+    this.embedded = false,
+    super.key,
+  });
 
   final SubscriptionState subscription;
   final VoidCallback? onActivated;
+  final bool embedded;
 
   @override
   State<SubscriptionGateScreen> createState() => _SubscriptionGateScreenState();
@@ -4927,14 +5016,17 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
       final result = await SubscriptionService().activateWithCode(_codeController.text);
       if (!mounted) return;
       if (!result) {
-        setState(() => _message = 'Invalid or used activation code.');
+        setState(() => _message = S.t('Invalid or used activation code.', 'Namba si sahihi au imeshatumika.'));
         return;
       }
-      setState(() => _message = 'Plan activated successfully. Opening pharmacy...');
+      setState(() => _message = S.t('Plan activated successfully. Opening pharmacy...', 'Mpango umewezeshwa. Inafungua duka...'));
       await Future<void>.delayed(const Duration(milliseconds: 400));
       widget.onActivated?.call();
     } catch (error) {
-      setState(() => _message = 'Activation failed: $error');
+      var text = error.toString();
+      if (text.startsWith('Bad state: ')) text = text.substring(11);
+      if (text.startsWith('Exception: ')) text = text.substring(11);
+      setState(() => _message = text);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -4942,142 +5034,199 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xfff4f7f8),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Card(
+    return ListenableBuilder(
+      listenable: AppLocale.instance,
+      builder: (context, _) {
+        final ended = widget.subscription.hasExpired || widget.subscription.isBlocked;
+        final title = widget.subscription.isTrial
+            ? (ended
+                ? S.t('Your free trial has ended.', 'Jaribio lako la bure limeisha.')
+                : S.t('Subscribe to keep using PharmSpecio.', 'Jiandikishe ili uendelee kutumia PharmSpecio.'))
+            : S.t('Access to PharmSpecio is currently locked.', 'Matumizi ya PharmSpecio yamefungwa kwa sasa.');
+        return Scaffold(
+          backgroundColor: const Color(0xfff4f7f8),
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 980),
               child: Padding(
-                padding: const EdgeInsets.all(30),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xffdff7ee),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              widget.subscription.isTrial ? 'Trial ended Â· subscribe to continue' : 'Subscription required',
-                              style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            widget.subscription.isTrial ? 'Your free trial has ended.' : 'Access to PharmSpecio is currently locked.',
-                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xff183b3b)),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(widget.subscription.message, style: const TextStyle(color: Color(0xff68807d), fontSize: 16)),
-                          const SizedBox(height: 18),
-                          Text(
-                            widget.subscription.trialCountdownLabel.isNotEmpty
-                                ? widget.subscription.trialCountdownLabel
-                                : '${widget.subscription.daysRemaining} days remaining',
-                            style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w800, fontSize: 18),
-                          ),
-                          if (widget.subscription.licenseEndsAt != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Trial / plan ended: ${widget.subscription.licenseEndsAt!.day}/${widget.subscription.licenseEndsAt!.month}/${widget.subscription.licenseEndsAt!.year}',
-                              style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                          const SizedBox(height: 20),
-                          _PlanOptionCard(
-                            title: 'Monthly',
-                            price: 'TZS 120,000',
-                            detail: 'Best for small pharmacies',
-                            badge: 'Popular',
-                          ),
-                          const SizedBox(height: 12),
-                          _PlanOptionCard(
-                            title: '6 Months',
-                            price: 'TZS 600,000',
-                            detail: 'Lower effective monthly cost',
-                            badge: 'Value',
-                          ),
-                          const SizedBox(height: 12),
-                          _PlanOptionCard(
-                            title: 'Yearly',
-                            price: 'TZS 1,100,000',
-                            detail: 'Maximum savings and full access',
-                            badge: 'Best value',
-                          ),
-                          const SizedBox(height: 18),
-                          FilledButton.icon(
-                            onPressed: () => AuthService().signOut(),
-                            icon: const Icon(Icons.logout_rounded),
-                            label: const Text('Sign out'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: const Color(0xfff7faf9),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xffdfe7e7)),
-                        ),
-                        child: Column(
+                padding: const EdgeInsets.all(24),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final stacked = constraints.maxWidth < 720;
+                        final plans = Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Activate your access', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
-                            const SizedBox(height: 12),
-                            const Text('Use your activation code after payment. This is checked on Firebase and blocks app access until valid.', style: TextStyle(color: Color(0xff68807d), height: 1.5)),
-                            const SizedBox(height: 18),
-                            TextField(
-                              controller: _codeController,
-                              textCapitalization: TextCapitalization.characters,
-                              decoration: const InputDecoration(
-                                hintText: 'Enter activation code',
-                                prefixIcon: Icon(Icons.vpn_key_rounded),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xffdff7ee),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                ended
+                                    ? S.t('Trial ended · subscribe to continue', 'Jaribio limeisha · jiandikishe ili uendelee')
+                                    : S.t('Professional subscription', 'Usajili wa kitaalamu'),
+                                style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w800),
                               ),
                             ),
-                            const SizedBox(height: 18),
-                            FilledButton(
-                              onPressed: _loading ? null : _activateCode,
-                              child: Text(_loading ? 'Activating...' : 'Activate plan'),
+                            const SizedBox(height: 16),
+                            Text(title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+                            const SizedBox(height: 10),
+                            Text(
+                              widget.subscription.message,
+                              style: const TextStyle(color: Color(0xff68807d), fontSize: 16),
                             ),
-                            if (_message != null) ...[
-                              const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xffe8f6f2),
-                                  borderRadius: BorderRadius.circular(12),
+                            if (widget.subscription.licenseEndsAt != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                S.t(
+                                  'End date: ${widget.subscription.licenseEndsAt!.day}/${widget.subscription.licenseEndsAt!.month}/${widget.subscription.licenseEndsAt!.year}',
+                                  'Tarehe ya mwisho: ${widget.subscription.licenseEndsAt!.day}/${widget.subscription.licenseEndsAt!.month}/${widget.subscription.licenseEndsAt!.year}',
                                 ),
-                                child: Text(_message!, style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w700)),
+                                style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w700),
                               ),
                             ],
-                            const SizedBox(height: 18),
-                            const Divider(),
+                            const SizedBox(height: 20),
+                            _PlanOptionCard(
+                              title: S.t('Monthly', 'Kila mwezi'),
+                              price: 'TZS 120,000',
+                              detail: S.t('Best for small pharmacies', 'Inafaa maduka madogo'),
+                              badge: S.t('Popular', 'Inayopendwa'),
+                            ),
                             const SizedBox(height: 12),
-                            const Text('Payment flow', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
-                            const SizedBox(height: 10),
-                            const Text('1. Customer pays monthly / 6 months / yearly.\n2. Admin or support sends activation code.\n3. Code is stored in Firebase and validated before app access is unlocked.', style: TextStyle(color: Color(0xff68807d), height: 1.7)),
+                            _PlanOptionCard(
+                              title: S.t('6 Months', 'Miezi 6'),
+                              price: 'TZS 600,000',
+                              detail: S.t('Lower effective monthly cost', 'Bei ya mwezi inakuwa nafuu'),
+                              badge: S.t('Value', 'Thamani'),
+                            ),
+                            const SizedBox(height: 12),
+                            _PlanOptionCard(
+                              title: S.t('Yearly', 'Mwaka'),
+                              price: 'TZS 1,100,000',
+                              detail: S.t('Maximum savings and full access', 'Akiba kubwa na matumizi kamili'),
+                              badge: S.t('Best value', 'Nafuu zaidi'),
+                            ),
+                            if (!widget.embedded) ...[
+                              const SizedBox(height: 18),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: FilledButton.icon(
+                                  onPressed: () => AuthService().signOut(),
+                                  icon: const Icon(Icons.logout_rounded),
+                                  label: Text(S.t('Sign out', 'Toka')),
+                                ),
+                              ),
+                            ],
                           ],
-                        ),
-                      ),
+                        );
+                        final activate = Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: const Color(0xfff7faf9),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xffdfe7e7)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                S.t('Activate your access', 'Wezesha matumizi'),
+                                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xff183b3b)),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                S.t(
+                                  'Pay for a plan, then enter the activation code from support. The shop stays locked until that code is valid.',
+                                  'Lipia mpango, kisha weka namba ya kuwezesha utakayopewa. Duka linabaki limefungwa hadi namba iwe sahihi.',
+                                ),
+                                style: const TextStyle(color: Color(0xff68807d), height: 1.5),
+                              ),
+                              const SizedBox(height: 18),
+                              TextField(
+                                controller: _codeController,
+                                textCapitalization: TextCapitalization.characters,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                  color: Color(0xff183b3b),
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: 'PHY-XXXX-XXXX-XXXX',
+                                  helperText: S.t(
+                                    'Paste the whole code, including the last 4 characters.',
+                                    'Bandika namba yote, pamoja na herufi 4 za mwisho.',
+                                  ),
+                                  prefixIcon: const Icon(Icons.vpn_key_rounded),
+                                  prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: FilledButton(
+                                  onPressed: _loading ? null : _activateCode,
+                                  child: Text(_loading ? S.t('Activating...', 'Inawezesha...') : S.t('Activate plan', 'Wezesha mpango')),
+                                ),
+                              ),
+                              if (_message != null) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xffe8f6f2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(_message!, style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w700)),
+                                ),
+                              ],
+                              const SizedBox(height: 18),
+                              const Divider(),
+                              const SizedBox(height: 12),
+                              Text(
+                                S.t('How payment works', 'Malipo yanavyokwenda'),
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b)),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                S.t(
+                                  '1. Pay monthly, 6 months, or yearly.\n2. Support sends you an activation code.\n3. Enter the code here to unlock the shop.',
+                                  '1. Lipa kwa mwezi, miezi 6, au mwaka.\n2. Unapewa namba ya kuwezesha.\n3. Weka namba hapa ili kufungua duka.',
+                                ),
+                                style: const TextStyle(color: Color(0xff68807d), height: 1.7),
+                              ),
+                            ],
+                          ),
+                        );
+                        final children = Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: stacked
+                              ? [plans, const SizedBox(height: 24), activate]
+                              : [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(child: plans),
+                                      const SizedBox(width: 24),
+                                      Expanded(child: activate),
+                                    ],
+                                  ),
+                                ],
+                        );
+                        return SingleChildScrollView(child: children);
+                      },
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -5110,9 +5259,13 @@ class _PlanOptionCard extends StatelessWidget {
         color: const Color(0xfff8fbfb),
         border: Border.all(color: const Color(0xffdfe7e7)),
       ),
-      child: Row(
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 160, maxWidth: 420),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -5130,7 +5283,6 @@ class _PlanOptionCard extends StatelessWidget {
             ),
             child: Text(badge, style: const TextStyle(color: Color(0xff0f766e), fontWeight: FontWeight.w700, fontSize: 11)),
           ),
-          const SizedBox(width: 14),
           Text(price, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
         ],
       ),

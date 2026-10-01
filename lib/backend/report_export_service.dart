@@ -39,89 +39,175 @@ class ReportExportService {
     required String pharmacyName,
     required String rangeLabel,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(title: 'PharmSpecio report — $pharmacyName', author: 'PharmSpecio');
+    final forest = PdfColor.fromInt(0xFF073B3A);
     final teal = PdfColor.fromInt(0xFF0F766E);
     final ink = PdfColor.fromInt(0xFF143230);
     final muted = PdfColor.fromInt(0xFF5B736F);
     final cream = PdfColor.fromInt(0xFFF7F4EC);
     final gold = PdfColor.fromInt(0xFFE8C47A);
+    final line = PdfColor.fromInt(0xFFD7E5E1);
+    final white = PdfColor.fromInt(0xFFFFFFFF);
+    pw.ImageProvider? logo;
+    try {
+      logo = await imageFromAssetBundle('assets/brand/pharmspecio.png');
+    } catch (_) {}
+
+    final now = DateTime.now();
+    final printedAt =
+        '${dateLabel(now)}  ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    pw.Widget kpi(String label, String value, String note) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.fromLTRB(10, 10, 10, 10),
+          decoration: pw.BoxDecoration(
+            color: cream,
+            borderRadius: pw.BorderRadius.circular(8),
+            border: pw.Border(left: pw.BorderSide(color: gold, width: 3)),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(label.toUpperCase(), style: pw.TextStyle(color: teal, fontSize: 7.5, fontWeight: pw.FontWeight.bold, letterSpacing: 0.6)),
+              pw.SizedBox(height: 6),
+              pw.Text(value, style: pw.TextStyle(color: ink, fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 3),
+              pw.Text(note, style: pw.TextStyle(color: muted, fontSize: 8)),
+            ],
+          ),
+        ),
+      );
+    }
 
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(36, 36, 36, 40),
-        header: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Container(width: 6, height: 28, color: gold),
-                pw.SizedBox(width: 10),
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('PHARMSPECIO', style: pw.TextStyle(color: teal, fontSize: 11, fontWeight: pw.FontWeight.bold, letterSpacing: 1.4)),
-                      pw.SizedBox(height: 2),
-                      pw.Text(pharmacyName, style: pw.TextStyle(color: ink, fontSize: 18, fontWeight: pw.FontWeight.bold)),
+        margin: const pw.EdgeInsets.fromLTRB(28, 24, 28, 28),
+        header: (context) {
+          return pw.Column(
+            children: [
+              pw.Container(
+                padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 12),
+                decoration: pw.BoxDecoration(color: forest, borderRadius: pw.BorderRadius.circular(10)),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    if (logo != null) ...[
+                      pw.Container(
+                        width: 36,
+                        height: 36,
+                        decoration: pw.BoxDecoration(color: white, shape: pw.BoxShape.circle),
+                        child: pw.Padding(
+                          padding: const pw.EdgeInsets.all(4),
+                          child: pw.Image(logo, fit: pw.BoxFit.contain),
+                        ),
+                      ),
+                      pw.SizedBox(width: 12),
                     ],
-                  ),
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text('PHARMSPECIO', style: pw.TextStyle(color: gold, fontSize: 9, fontWeight: pw.FontWeight.bold, letterSpacing: 1.8)),
+                          pw.SizedBox(height: 2),
+                          pw.Text(pharmacyName, style: pw.TextStyle(color: white, fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                          pw.Text('Pharmacy management report', style: pw.TextStyle(color: PdfColor.fromInt(0xFFB7D4CF), fontSize: 9)),
+                        ],
+                      ),
+                    ),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text('PERIOD', style: pw.TextStyle(color: gold, fontSize: 7.5, fontWeight: pw.FontWeight.bold, letterSpacing: 0.8)),
+                        pw.SizedBox(height: 2),
+                        pw.Text(rangeLabel, style: pw.TextStyle(color: white, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('Confidential', style: pw.TextStyle(color: PdfColor.fromInt(0xFFB7D4CF), fontSize: 8)),
+                      ],
+                    ),
+                  ],
                 ),
-                pw.Text('Pharmacy report', style: pw.TextStyle(color: muted, fontSize: 11)),
+              ),
+              pw.SizedBox(height: 14),
+            ],
+          );
+        },
+        footer: (context) {
+          return pw.Container(
+            padding: const pw.EdgeInsets.only(top: 8),
+            decoration: pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(color: line))),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('PharmSpecio  ·  Printed $printedAt', style: pw.TextStyle(color: muted, fontSize: 8)),
+                pw.Text('Page ${context.pageNumber} of ${context.pagesCount}', style: pw.TextStyle(color: muted, fontSize: 8)),
               ],
             ),
-            pw.SizedBox(height: 8),
-            pw.Divider(color: PdfColor.fromInt(0xFFD7E5E1)),
-            pw.SizedBox(height: 6),
-          ],
-        ),
-        footer: (context) => pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text('Generated ${dateLabel(DateTime.now())}', style: pw.TextStyle(color: muted, fontSize: 9)),
-            pw.Text('Page ${context.pageNumber} of ${context.pagesCount}', style: pw.TextStyle(color: muted, fontSize: 9)),
-          ],
-        ),
+          );
+        },
         build: (context) => [
-          pw.Text('Period: $rangeLabel', style: pw.TextStyle(color: ink, fontSize: 12, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 14),
           pw.Row(
             children: [
-              _pdfMetric('Sales revenue', tzs(report.salesTotalMinor), '${report.salesCount} sales', teal, cream),
+              kpi('Sales revenue', tzs(report.salesTotalMinor), '${report.salesCount} completed sales'),
               pw.SizedBox(width: 8),
-              _pdfMetric('Purchases', tzs(report.purchasesTotalMinor), '${report.purchasesCount} records', teal, cream),
+              kpi('Purchases', tzs(report.purchasesTotalMinor), '${report.purchasesCount} purchase records'),
               pw.SizedBox(width: 8),
-              _pdfMetric('Gross profit', tzs(report.grossProfitMinor), 'After stock cost', teal, cream),
+              kpi('Gross profit', tzs(report.grossProfitMinor), 'Revenue minus stock cost'),
               pw.SizedBox(width: 8),
-              _pdfMetric('Stock units', money(report.stockUnits), '${report.lowStockCount} need attention', teal, cream),
+              kpi('Stock on hand', money(report.stockUnits), '${report.lowStockCount} items need reorder'),
             ],
           ),
           pw.SizedBox(height: 18),
-          pw.Text('Medicine performance', style: pw.TextStyle(color: ink, fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Medicine performance', style: pw.TextStyle(color: ink, fontSize: 13, fontWeight: pw.FontWeight.bold)),
+              pw.Text('${report.medicinePerformance.length} medicines', style: pw.TextStyle(color: muted, fontSize: 9)),
+            ],
+          ),
           pw.SizedBox(height: 8),
           if (report.medicinePerformance.isEmpty)
-            pw.Text('No medicine activity in this period.', style: pw.TextStyle(color: muted, fontSize: 11))
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(16),
+              decoration: pw.BoxDecoration(color: cream, borderRadius: pw.BorderRadius.circular(8)),
+              child: pw.Text('No medicine sales in this period.', style: pw.TextStyle(color: muted, fontSize: 10)),
+            )
           else
-            pw.TableHelper.fromTextArray(
-              headerDecoration: pw.BoxDecoration(color: cream),
-              headerStyle: pw.TextStyle(color: ink, fontSize: 9, fontWeight: pw.FontWeight.bold),
-              cellStyle: pw.TextStyle(color: muted, fontSize: 9),
-              cellAlignment: pw.Alignment.centerLeft,
-              headerAlignment: pw.Alignment.centerLeft,
-              cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              headers: const ['Medicine', 'Units', 'Revenue (TZS)', 'Cost (TZS)', 'Profit (TZS)'],
-              data: report.medicinePerformance
-                  .map(
-                    (row) => [
-                      row.medicineName,
-                      money(row.unitsSold),
-                      money(row.revenueMinor),
-                      money(row.costMinor),
-                      money(row.grossProfitMinor),
+            pw.Table(
+              border: pw.TableBorder(
+                horizontalInside: pw.BorderSide(color: line, width: 0.4),
+              ),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(3.2),
+                1: pw.FlexColumnWidth(1),
+                2: pw.FlexColumnWidth(1.4),
+                3: pw.FlexColumnWidth(1.4),
+                4: pw.FlexColumnWidth(1.4),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: pw.BoxDecoration(color: teal),
+                  children: [
+                    _th('Medicine', white),
+                    _th('Units', white, align: pw.Alignment.centerRight),
+                    _th('Revenue', white, align: pw.Alignment.centerRight),
+                    _th('Cost', white, align: pw.Alignment.centerRight),
+                    _th('Profit', white, align: pw.Alignment.centerRight),
+                  ],
+                ),
+                for (var i = 0; i < report.medicinePerformance.length; i++)
+                  pw.TableRow(
+                    decoration: pw.BoxDecoration(color: i.isEven ? white : cream),
+                    children: [
+                      _td(report.medicinePerformance[i].medicineName, ink, bold: true),
+                      _td(money(report.medicinePerformance[i].unitsSold), muted, align: pw.Alignment.centerRight),
+                      _td(money(report.medicinePerformance[i].revenueMinor), muted, align: pw.Alignment.centerRight),
+                      _td(money(report.medicinePerformance[i].costMinor), muted, align: pw.Alignment.centerRight),
+                      _td(money(report.medicinePerformance[i].grossProfitMinor), ink, align: pw.Alignment.centerRight, bold: true),
                     ],
-                  )
-                  .toList(),
+                  ),
+              ],
             ),
         ],
       ),
@@ -130,24 +216,22 @@ class ReportExportService {
     return doc.save();
   }
 
-  pw.Widget _pdfMetric(String label, String value, String note, PdfColor teal, PdfColor cream) {
-    return pw.Expanded(
-      child: pw.Container(
-        padding: const pw.EdgeInsets.all(10),
-        decoration: pw.BoxDecoration(
-          color: cream,
-          borderRadius: pw.BorderRadius.circular(8),
-        ),
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(label, style: pw.TextStyle(color: teal, fontSize: 8, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 4),
-            pw.Text(value, style: const pw.TextStyle(fontSize: 11)),
-            pw.SizedBox(height: 2),
-            pw.Text(note, style: const pw.TextStyle(fontSize: 8)),
-          ],
-        ),
+  pw.Widget _th(String text, PdfColor color, {pw.Alignment align = pw.Alignment.centerLeft}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.fromLTRB(8, 7, 8, 7),
+      child: pw.Align(
+        alignment: align,
+        child: pw.Text(text, style: pw.TextStyle(color: color, fontSize: 8, fontWeight: pw.FontWeight.bold)),
+      ),
+    );
+  }
+
+  pw.Widget _td(String text, PdfColor color, {pw.Alignment align = pw.Alignment.centerLeft, bool bold = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.fromLTRB(8, 6, 8, 6),
+      child: pw.Align(
+        alignment: align,
+        child: pw.Text(text, style: pw.TextStyle(color: color, fontSize: 8.5, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
       ),
     );
   }
@@ -193,7 +277,12 @@ class ReportExportService {
     required String rangeLabel,
   }) async {
     final bytes = await buildPdf(report: report, pharmacyName: pharmacyName, rangeLabel: rangeLabel);
-    await Printing.layoutPdf(onLayout: (_) async => bytes);
+    await Printing.layoutPdf(
+      name: 'PharmSpecio report $rangeLabel',
+      format: PdfPageFormat.a4,
+      usePrinterSettings: false,
+      onLayout: (PdfPageFormat format) async => bytes,
+    );
   }
 
   Future<String?> savePdf({

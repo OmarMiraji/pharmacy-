@@ -37,19 +37,17 @@ class InventoryService {
       throw ArgumentError('Expiry date cannot be in the past.');
     }
 
-    final duplicateBatches = await TenantContext.instance
+    final existingBatchQuery = await TenantContext.instance
         .scoped(_firestore.collection(FirestoreCollections.medicineBatches))
         .where('medicineId', isEqualTo: medicineId)
         .where('batchNumber', isEqualTo: normalizedBatch)
         .where('isActive', isEqualTo: true)
         .limit(1)
         .get();
-    if (duplicateBatches.docs.isNotEmpty) {
-      throw StateError('This medicine already has an active batch with the same number.');
-    }
+    final existingBatchRef = existingBatchQuery.docs.isEmpty ? null : existingBatchQuery.docs.first.reference;
 
     final medicineRef = _firestore.collection(FirestoreCollections.medicines).doc(medicineId);
-    final batchRef = _firestore.collection(FirestoreCollections.medicineBatches).doc();
+    final batchRef = existingBatchRef ?? _firestore.collection(FirestoreCollections.medicineBatches).doc();
     final movementRef = _firestore.collection(FirestoreCollections.stockMovements).doc();
 
     await _firestore.runTransaction((transaction) async {
@@ -63,6 +61,11 @@ class InventoryService {
       final loose = packSize > 1;
       final stockQty = loose ? quantity * packSize : quantity;
       final currentStock = (medicineData['quantityOnHand'] as num?)?.toInt() ?? 0;
+      var batchQty = 0;
+      if (existingBatchRef != null) {
+        final batchSnap = await transaction.get(existingBatchRef);
+        batchQty = (batchSnap.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+      }
       final now = FieldValue.serverTimestamp();
       transaction.update(medicineRef, {
         'quantityOnHand': currentStock + stockQty,
@@ -70,18 +73,28 @@ class InventoryService {
         'supplierId': supplierId ?? medicineData['supplierId'],
         'updatedAt': now,
       });
-      transaction.set(batchRef, TenantContext.instance.withTenant({
-        'medicineId': medicineId,
-        'batchNumber': normalizedBatch,
-        'expiryDate': expiryDate,
-        'quantityOnHand': stockQty,
-        'unitCostMinor': unitCostMinor,
-        'supplierId': supplierId,
-        'purchaseId': purchaseId,
-        'isActive': true,
-        'createdAt': now,
-        'updatedAt': now,
-      }));
+      if (existingBatchRef != null) {
+        transaction.update(existingBatchRef, {
+          'quantityOnHand': batchQty + stockQty,
+          'unitCostMinor': unitCostMinor,
+          'expiryDate': expiryDate,
+          'isActive': true,
+          'updatedAt': now,
+        });
+      } else {
+        transaction.set(batchRef, TenantContext.instance.withTenant({
+          'medicineId': medicineId,
+          'batchNumber': normalizedBatch,
+          'expiryDate': expiryDate,
+          'quantityOnHand': stockQty,
+          'unitCostMinor': unitCostMinor,
+          'supplierId': supplierId,
+          'purchaseId': purchaseId,
+          'isActive': true,
+          'createdAt': now,
+          'updatedAt': now,
+        }));
+      }
       transaction.set(movementRef, StockLedger.movement(
         medicineId: medicineId,
         medicineName: medicineSnapshot.data()?['name'] as String?,

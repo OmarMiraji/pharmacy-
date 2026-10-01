@@ -46,8 +46,6 @@ class PhyimacyBrand {
       ),
       listTileTheme: const ListTileThemeData(
         iconColor: teal,
-        tileColor: Colors.transparent,
-        selectedTileColor: Color(0xffdff7ee),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -117,9 +115,10 @@ class PhyimacyBrand {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: forest,
-        contentTextStyle: GoogleFonts.inter(color: Colors.white),
+        contentTextStyle: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       datePickerTheme: DatePickerThemeData(
         backgroundColor: Colors.white,

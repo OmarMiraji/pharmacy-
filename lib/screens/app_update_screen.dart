@@ -149,7 +149,7 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
             const Text('Publish / connect GitHub', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
             const SizedBox(height: 8),
             const Text(
-              'Save owner/repo once. After each tag (v1.0.2), GitHub builds the zip. Pharmacies tap Update now — no browser unzip.',
+              'After each GitHub Release, bump the tag (v1.0.3) and attach pharmspecio-windows.zip. Then pharmacies tap Update now. If the tag stays the same as the installed version, shops will not see a new update.',
               style: TextStyle(color: Color(0xff68807d)),
             ),
             const SizedBox(height: 12),

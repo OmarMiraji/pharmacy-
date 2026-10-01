@@ -52,30 +52,24 @@ class ShopAlerts {
 
       for (final line in dated) {
         final days = ExpiryPriority.daysLeft(line.expiry);
-        final batchHint = (line.batchNumber ?? '').trim().isEmpty ? '' : ' · batch ${line.batchNumber}';
         if (ExpiryPriority.isExpired(line.expiry)) {
           alerts.add(
             ShopAlert(
               id: 'expired:${medicine.id}:${line.batchId ?? 'item'}',
               kind: ShopAlertKind.expired,
-              title: '${medicine.name} has expired',
-              body: '${line.quantity} ${medicine.unit}$batchHint · ${ExpiryPriority.label(line.expiry)}. Open Medicines → Expired.',
+              title: medicine.name,
+              body: 'Expired · ${ExpiryPriority.format(line.expiry)} · ${line.quantity} ${medicine.unit}',
               expiry: line.expiry,
               quantity: line.quantity,
             ),
           );
         } else if (ExpiryPriority.isNotifySoon(line.expiry)) {
-          final remain = days == 0
-              ? 'expires today'
-              : days == 1
-                  ? '1 day remaining'
-                  : '$days days remaining';
           alerts.add(
             ShopAlert(
               id: 'soon:${medicine.id}:${line.batchId ?? 'item'}',
               kind: ShopAlertKind.expiringSoon,
-              title: '${medicine.name} · $remain',
-              body: '${line.quantity} ${medicine.unit}$batchHint · sell first before ${ExpiryPriority.format(line.expiry)}.',
+              title: medicine.name,
+              body: days <= 0 ? 'Expires today' : 'Expires in $days days',
               expiry: line.expiry,
               quantity: line.quantity,
             ),

@@ -56,19 +56,19 @@ class Medicine {
 
   bool get tracksBaseUnits => piecesPerPack > 1 || stripSize > 1 || boxSize > 1;
 
-  bool get sellsLoose => tracksBaseUnits;
+  bool get sellsLoose => canSellPiecesByType;
 
   bool get canSellPiecesByType {
-    const pieceTypes = {'Tablet', 'Capsule', 'Piece', 'Sachet'};
+    const pieceTypes = {'Tablet', 'Capsule'};
     return pieceTypes.contains(baseLabel);
   }
 
   int get piecesPerPack => packSize < 1 ? 1 : packSize;
 
   int get effectiveMinSaleQty {
+    if (!canSellPiecesByType) return 1;
     if (minSaleQty > 0) return minSaleQty;
-    if (canSellPiecesByType && piecesPerPack > 1) return 5;
-    return 1;
+    return 5;
   }
 
   int minSellCountFor(SellUnit unit, int availableBase) {

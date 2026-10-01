@@ -116,19 +116,39 @@ class OfflineSyncService extends ChangeNotifier {
     }
   }
 
+  void noteDisconnected() {
+    if (_online) {
+      _online = false;
+      notifyListeners();
+    }
+  }
+
+  void noteConnected() {
+    if (!_online) {
+      _online = true;
+      notifyListeners();
+      if (_queue.isNotEmpty) unawaited(syncPending());
+    }
+  }
+
   static Future<bool> probeNetwork() async {
     try {
-      final socket = await Socket.connect('firestore.googleapis.com', 443, timeout: const Duration(milliseconds: 400));
+      final ipv4 = await InternetAddress.lookup(
+        'firestore.googleapis.com',
+        type: InternetAddressType.IPv4,
+      );
+      if (ipv4.isNotEmpty) {
+        final socket = await Socket.connect(ipv4.first, 443, timeout: const Duration(seconds: 3));
+        socket.destroy();
+        return true;
+      }
+    } catch (_) {}
+    try {
+      final socket = await Socket.connect(InternetAddress('1.1.1.1'), 443, timeout: const Duration(seconds: 2));
       socket.destroy();
       return true;
     } catch (_) {
-      try {
-        final socket = await Socket.connect('8.8.8.8', 53, timeout: const Duration(milliseconds: 250));
-        socket.destroy();
-        return true;
-      } catch (_) {
-        return false;
-      }
+      return false;
     }
   }
 
@@ -137,6 +157,14 @@ class OfflineSyncService extends ChangeNotifier {
     return error is SocketException ||
         error is TimeoutException ||
         text.contains('unavailable') ||
+        text.contains('network is unreachable') ||
+        text.contains('no route to host') ||
+        text.contains('connection timed out') ||
+        text.contains('failed to connect') ||
+        text.contains('wsagetoverlappedresult') ||
+        text.contains('10051') ||
+        text.contains('10060') ||
+        text.contains('10065') ||
         text.contains('network') ||
         text.contains('socket') ||
         text.contains('offline') ||

@@ -115,6 +115,27 @@ class AppUpdateService {
       final github = await fetchGithubLatest(repo);
       if (github != null) {
         latest = github;
+        if (stored != null && _compareVersions(stored.version, github.version) > 0 && stored.isValid) {
+          latest = AppRelease(
+            version: stored.version,
+            buildNumber: stored.buildNumber,
+            downloadUrl: stored.downloadUrl.isNotEmpty ? stored.downloadUrl : github.downloadUrl,
+            notes: stored.notes.isNotEmpty ? stored.notes : github.notes,
+            publishedAt: stored.publishedAt ?? github.publishedAt,
+            githubRepo: github.githubRepo,
+            sha256: stored.sha256.isNotEmpty ? stored.sha256 : github.sha256,
+          );
+        } else if (stored != null && github.buildNumber == 0 && stored.buildNumber > 0) {
+          latest = AppRelease(
+            version: github.version,
+            buildNumber: stored.buildNumber,
+            downloadUrl: github.downloadUrl,
+            notes: github.notes.isNotEmpty ? github.notes : stored.notes,
+            publishedAt: github.publishedAt ?? stored.publishedAt,
+            githubRepo: github.githubRepo,
+            sha256: github.sha256,
+          );
+        }
       }
     }
     return AppUpdateCheck(
@@ -266,13 +287,19 @@ class AppUpdateService {
       throw StateError('The package does not contain PharmSpecio.exe.');
     }
 
-    onProgress(0.88, 'Windows may ask for permission. Click Yes, then PharmSpecio will close and reopen...');
+    onProgress(0.88, 'Windows may ask for permission. Click Yes. The app will close only after the updater starts...');
     final script = File('${work.path}${Platform.pathSeparator}apply.ps1');
     script.writeAsStringSync(_updaterScript(
       appPid: pid,
       payloadDir: exe.parent.path,
       installDir: installDir.path,
     ));
+    final logFile = File('${Directory.systemTemp.path}${Platform.pathSeparator}pharmspecio-update.log');
+    if (logFile.existsSync()) {
+      try {
+        logFile.deleteSync();
+      } catch (_) {}
+    }
 
     final fileArg = script.path.replaceAll("'", "''");
     final elevate = await Process.run(
@@ -287,10 +314,26 @@ class AppUpdateService {
     );
     if (elevate.exitCode != 0) {
       throw StateError(
-        'Update was cancelled or needs Administrator. Click Yes on the Windows prompt, or install PharmSpecio-Setup on this PC once.',
+        'Update was cancelled or needs Administrator. Click Yes on the Windows prompt, then open PharmSpecio again.',
       );
     }
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    var started = false;
+    for (var i = 0; i < 40; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (logFile.existsSync()) {
+        final text = logFile.readAsStringSync();
+        if (text.contains('start pid=')) {
+          started = true;
+          break;
+        }
+      }
+    }
+    if (!started) {
+      throw StateError(
+        'Windows did not start the updater. Click Yes on the Administrator prompt, or run PharmSpecio as Administrator once.',
+      );
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 400));
     exit(0);
   }
 
@@ -415,14 +458,9 @@ for (\$i = 0; \$i -lt 80; \$i++) {
 }
 Get-Process -Name 'PharmSpecio','Phyimacy','phyimacy' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
-Get-ChildItem -Path \$dest -File -ErrorAction SilentlyContinue | Where-Object { \$_.Extension -in '.exe','.dll' } | ForEach-Object {
-  try {
-    Rename-Item -Path \$_.FullName -NewName (\$_.Name + '.bak') -Force -ErrorAction Stop
-  } catch {}
-}
 \$copied = \$false
 if (Get-Command robocopy -ErrorAction SilentlyContinue) {
-  \$p = Start-Process -FilePath robocopy.exe -ArgumentList @(\$src, \$dest, '/E', '/IS', '/IT', '/R:8', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS') -Wait -PassThru -NoNewWindow
+  \$p = Start-Process -FilePath robocopy.exe -ArgumentList @(\$src, \$dest, '/E', '/IS', '/IT', '/R:12', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS') -Wait -PassThru -NoNewWindow
   if (\$p.ExitCode -le 7) { \$copied = \$true; Log "robocopy \$(\$p.ExitCode)" }
 }
 if (-not \$copied) {
@@ -434,11 +472,10 @@ if (-not \$copied) {
     Log "copy-item failed: \$_"
   }
 }
-Get-ChildItem -Path \$dest -Filter '*.bak' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 \$exe = Join-Path \$dest 'PharmSpecio.exe'
 if (-not (Test-Path \$exe)) { \$exe = Join-Path \$dest 'Phyimacy.exe' }
 if (-not \$copied -or -not (Test-Path \$exe)) {
-  Log 'update failed; leaving existing install'
+  Log 'update failed; existing install was left unchanged'
   exit 1
 }
 Start-Process -FilePath \$exe -WorkingDirectory \$dest

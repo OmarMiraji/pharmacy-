@@ -2,9 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 class ExpiryPriority {
-  static const urgentDays = 30;
+  static const urgentDays = 60;
   static const watchDays = 90;
-  static const notifyDays = 5;
+  static const notifyDays = 60;
 
   static DateTime startOfToday() {
     final now = DateTime.now();

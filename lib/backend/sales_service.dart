@@ -135,21 +135,27 @@ class SalesService {
           'quantityOnHand': currentStock + restoreByMedicine[id]!,
           'updatedAt': now,
         });
-        transaction.set(_firestore.collection(FirestoreCollections.stockMovements).doc(), StockLedger.movement(
-          medicineId: id,
-          medicineName: names[id],
-          type: 'sale_void',
-          quantityChange: restoreByMedicine[id]!,
-          referenceId: saleId,
-          createdBy: 'system',
-          createdAt: now,
-        ));
       }
       transaction.update(saleRef, {
         'status': 'voided',
+        'voidedAt': now,
         'updatedAt': now,
       });
     });
+    try {
+      final writes = _firestore.batch();
+      for (final entry in restoreByMedicine.entries) {
+        writes.set(_firestore.collection(FirestoreCollections.stockMovements).doc(), StockLedger.movement(
+          medicineId: entry.key,
+          medicineName: names[entry.key],
+          type: 'sale_void',
+          quantityChange: entry.value,
+          referenceId: saleId,
+          createdBy: 'system',
+        ));
+      }
+      await writes.commit();
+    } catch (_) {}
   }
 
   Future<String> completeSale({
@@ -195,6 +201,7 @@ class SalesService {
       batchRefsByMedicine[medicineIds[i]] = [for (final doc in batchQueries[i].docs) doc.reference];
     }
 
+    var allocations = <_BatchTake>[];
     await _firestore.runTransaction((transaction) async {
       final serverNow = FieldValue.serverTimestamp();
       final medicineRefs = [
@@ -225,7 +232,7 @@ class SalesService {
         }
       }
 
-      final allocations = <_BatchTake>[];
+      allocations = <_BatchTake>[];
       for (final medicineId in medicineIds) {
         final medicine = itemByMedicine[medicineId]!;
         final needed = medicineTotals[medicineId]!;
@@ -273,12 +280,13 @@ class SalesService {
         'taxMinor': 0,
         'totalMinor': subtotalMinor - discountMinor,
         'soldBy': soldBy.trim(),
+        'itemNames': [for (final item in items) item.medicineName],
         'createdAt': serverNow,
         'updatedAt': serverNow,
       }));
 
       for (final item in items) {
-        transaction.set(saleItemsCollection.doc(), {
+        transaction.set(saleItemsCollection.doc(), TenantContext.instance.withTenant({
           'medicineId': item.medicineId,
           'medicineName': item.medicineName,
           'quantity': item.baseQuantity,
@@ -287,7 +295,7 @@ class SalesService {
           'unitPriceMinor': item.unitPriceMinor,
           'totalMinor': item.totalMinor,
           'createdAt': serverNow,
-        });
+        }));
       }
       for (final allocation in allocations) {
         final current = (allocation.snapshot.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
@@ -299,7 +307,13 @@ class SalesService {
           'updatedAt': serverNow,
           'isActive': current - allocation.quantity > 0,
         });
-        transaction.set(movementCollection.doc(), StockLedger.movement(
+      }
+    });
+
+    try {
+      final writes = _firestore.batch();
+      for (final allocation in allocations) {
+        writes.set(movementCollection.doc(), StockLedger.movement(
           medicineId: allocation.medicine.medicineId,
           medicineName: allocation.medicine.medicineName,
           type: 'sale',
@@ -308,10 +322,10 @@ class SalesService {
           createdBy: soldBy.trim(),
           batchId: allocation.snapshot.id,
           batchNumber: allocation.snapshot.data()?['batchNumber'] as String?,
-          createdAt: serverNow,
         ));
       }
-    });
+      await writes.commit();
+    } catch (_) {}
     return receiptNumber;
   }
 }

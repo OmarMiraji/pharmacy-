@@ -32,11 +32,7 @@ class SubscriptionState {
   final String message;
   final PharmacyAccess access;
 
-  bool get hasExpired {
-    final expiry = expiresAt ?? trialEndsAt;
-    if (expiry == null) return false;
-    return DateTime.now().isAfter(expiry);
-  }
+  bool get hasExpired => SubscriptionService.periodEndedOnCalendar(expiresAt ?? trialEndsAt);
 
   bool get canWrite => access == PharmacyAccess.full;
   bool get canRead => access != PharmacyAccess.blocked;
@@ -49,7 +45,7 @@ class SubscriptionState {
     final expiry = licenseEndsAt;
     if (expiry == null) return 0;
     final now = DateTime.now();
-    if (!now.isBefore(expiry)) return 0;
+    if (SubscriptionService.periodEndedOnCalendar(expiry, now: now)) return 0;
     final wholeDays = DateTime(expiry.year, expiry.month, expiry.day)
         .difference(DateTime(now.year, now.month, now.day))
         .inDays;
@@ -119,6 +115,15 @@ class SubscriptionService {
     'yearly': 365,
   };
 
+  /// Trial/plan date printed as 1/10/2026 ends at the start of that local calendar day.
+  static bool periodEndedOnCalendar(DateTime? expiry, {DateTime? now}) {
+    if (expiry == null) return false;
+    final current = now ?? DateTime.now();
+    final endDay = DateTime(expiry.year, expiry.month, expiry.day);
+    final today = DateTime(current.year, current.month, current.day);
+    return !today.isBefore(endDay);
+  }
+
   final FirebaseFirestore _firestore;
   static const _codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -138,7 +143,7 @@ class SubscriptionService {
     final now = DateTime.now();
     final expiry = pharmacy.expiresAt ?? pharmacy.trialEndsAt;
     final notStarted = pharmacy.startsAt != null && now.isBefore(pharmacy.startsAt!);
-    final expired = expiry != null && now.isAfter(expiry);
+    final expired = periodEndedOnCalendar(expiry, now: now);
     final trial = pharmacy.isTrial || pharmacy.plan == 'trial' || pharmacy.status == 'trial';
     final PharmacyAccess access;
     if (!pharmacy.isUnlocked || notStarted) {
@@ -194,53 +199,74 @@ class SubscriptionService {
 
   Future<bool> activateWithCode(String code) async {
     final pharmacyId = TenantContext.instance.pharmacyId;
-    if (pharmacyId == null || pharmacyId.isEmpty || code.trim().isEmpty) return false;
+    if (pharmacyId == null || pharmacyId.isEmpty || code.trim().isEmpty) {
+      throw Exception('This login is not linked to a shop. Sign in again.');
+    }
 
     final normalized = _normalizeCode(code);
+    if (!RegExp(r'^PHY-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(normalized)) {
+      throw StateError(
+        'Enter the full code (PHY-XXXX-XXXX-XXXX). The last letters were missing, so Firebase could not find it.',
+      );
+    }
     final codeRef = _firestore.collection(FirestoreCollections.subscriptionCodes).doc(normalized);
-    final codeSnap = await codeRef.get();
-    if (!codeSnap.exists) return false;
+    final DocumentSnapshot<Map<String, dynamic>> codeSnap;
+    try {
+      codeSnap = await codeRef.get();
+    } catch (error) {
+      throw StateError('Could not read this code from Firebase: $error');
+    }
+    if (!codeSnap.exists) {
+      throw StateError(
+        'This activation code was not found in Firebase. Enter the full code, for example PHY-XXXX-XXXX-XXXX.',
+      );
+    }
     final codeData = codeSnap.data() ?? <String, dynamic>{};
-    if (codeData['isUsed'] == true) return false;
-    final assignedPharmacy = (codeData['pharmacyId'] as String?)?.trim();
-    if (assignedPharmacy != null && assignedPharmacy.isNotEmpty && assignedPharmacy != pharmacyId) {
-      return false;
+    if (codeData['isUsed'] == true) {
+      throw StateError('This activation code has already been used.');
     }
 
     final plan = (codeData['plan'] as String?) ?? 'monthly';
     final durationDays = (codeData['durationDays'] as num?)?.toInt() ?? planDurations[plan] ?? 30;
     final startsAt = (codeData['startsAt'] as Timestamp?)?.toDate() ?? DateTime.now();
-    final expiry = startsAt.add(Duration(days: durationDays));
+    final start = startsAt.isAfter(DateTime.now()) ? DateTime.now() : startsAt;
+    final expiry = start.add(Duration(days: durationDays));
     final pharmacyRef = _firestore.collection(FirestoreCollections.pharmacies).doc(pharmacyId);
 
-    await _firestore.runTransaction((transaction) async {
-      final freshCode = await transaction.get(codeRef);
-      if (!freshCode.exists || freshCode.data()?['isUsed'] == true) {
-        throw StateError('This token is no longer valid.');
-      }
-      transaction.set(
-        pharmacyRef,
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw StateError('Sign in again, then enter the activation code.');
+    }
+
+    try {
+      await pharmacyRef.set(
         {
           'status': 'active',
           'plan': plan,
           'isTrial': false,
           'isUnlocked': true,
-          'startsAt': Timestamp.fromDate(startsAt),
+          'startsAt': Timestamp.fromDate(start),
           'expiresAt': Timestamp.fromDate(expiry),
-          'trialEndsAt': null,
+          'trialEndsAt': Timestamp.fromDate(expiry),
           'activationCode': normalized,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
-      transaction.update(codeRef, {
+    } catch (error) {
+      throw StateError('Could not unlock the shop ($pharmacyId): $error');
+    }
+    try {
+      await codeRef.update({
         'isUsed': true,
         'usedByPharmacyId': pharmacyId,
-        'usedByUserId': FirebaseAuth.instance.currentUser?.uid,
+        'usedByUserId': uid,
         'usedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-    });
+    } catch (_) {
+      // Shop is already unlocked; marking the code used is best-effort.
+    }
     return true;
   }
 
@@ -337,5 +363,12 @@ class SubscriptionService {
     }, SetOptions(merge: true));
   }
 
-  String _normalizeCode(String code) => code.trim().toUpperCase().replaceAll(' ', '');
+  String _normalizeCode(String code) {
+    final raw = code.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final body = raw.startsWith('PHY') ? raw.substring(3) : raw;
+    if (body.length < 12) {
+      return body.isEmpty ? raw : 'PHY-$body';
+    }
+    return 'PHY-${body.substring(0, 4)}-${body.substring(4, 8)}-${body.substring(8, 12)}';
+  }
 }

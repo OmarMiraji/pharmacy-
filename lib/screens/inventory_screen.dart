@@ -6,6 +6,7 @@ import '../backend/auth_service.dart';
 import '../backend/inventory_service.dart';
 import '../backend/inventory_tracking_service.dart';
 import '../backend/medicine_service.dart';
+import '../backend/medicine_match.dart';
 import '../backend/models.dart';
 import '../backend/user_profile.dart';
 import '../backend/expiry_priority.dart';
@@ -24,6 +25,12 @@ class InventoryScreen extends StatefulWidget {
 
 class _InventoryScreenState extends State<InventoryScreen> {
   DateTime _day = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+  @override
+  void initState() {
+    super.initState();
+    MedicineService().consolidateDuplicateMedicinesOnce();
+  }
 
   bool get _isToday {
     final now = DateTime.now();
@@ -58,7 +65,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       builder: (context, medicineSnapshot) {
         if (medicineSnapshot.hasError) return Center(child: Text('Could not load stock: ${medicineSnapshot.error}'));
         if (!medicineSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final medicines = medicineSnapshot.data!;
+        final medicines = MedicineMatch.unique(medicineSnapshot.data!);
         return StreamBuilder<List<MedicineBatch>>(
           stream: MedicineService().watchAllBatches(),
           builder: (context, batchSnapshot) {
@@ -362,42 +369,44 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 final statusExpiry = nearest[medicine.id];
                 final expired = statusExpiry != null && ExpiryPriority.isExpired(statusExpiry);
                 final urgent = statusExpiry != null && ExpiryPriority.isUrgent(statusExpiry);
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                  leading: CircleAvatar(
-                    backgroundColor: statusExpiry != null ? ExpiryPriority.tint(statusExpiry) : (isLow ? const Color(0xfffff0d7) : const Color(0xffdff7ee)),
-                    child: Icon(
-                      expired ? Icons.event_busy_rounded : (urgent ? Icons.priority_high_rounded : Icons.medication_outlined),
-                      color: expired || urgent || isLow ? const Color(0xffc2410c) : PhyimacyBrand.teal,
-                    ),
-                  ),
-                  title: Text(medicine.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text(
-                    [
-                      '${medicine.sku}  •  ${medicine.stockLabel()} on hand',
-                      if (statusExpiry != null) ExpiryPriority.label(statusExpiry),
-                    ].join('  •  '),
-                  ),
-                  trailing: Wrap(
-                    spacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
                     children: [
-                      if (expired)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: const Color(0xffffeadf), borderRadius: BorderRadius.circular(20)),
-                          child: const Text('Expired', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xffc2410c))),
-                        )
-                      else if (urgent)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: const Color(0xfffff0d7), borderRadius: BorderRadius.circular(20)),
-                          child: const Text('Sell first', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xffc2410c))),
+                      CircleAvatar(
+                        backgroundColor: statusExpiry != null ? ExpiryPriority.tint(statusExpiry) : (isLow ? const Color(0xfffff0d7) : const Color(0xffdff7ee)),
+                        child: Icon(
+                          expired ? Icons.event_busy_rounded : (urgent ? Icons.priority_high_rounded : Icons.medication_outlined),
+                          color: expired || urgent || isLow ? const Color(0xffc2410c) : PhyimacyBrand.teal,
                         ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(medicine.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            Text(
+                              [
+                                '${medicine.sku}  •  ${medicine.stockLabel()} on hand',
+                                if (statusExpiry != null) ExpiryPriority.label(statusExpiry),
+                              ].join('  •  '),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Color(0xff68807d), fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       if (widget.profile.can('inventory.adjust'))
-                        FilledButton.tonalIcon(onPressed: () => _showReceiveDialog(context, medicine), icon: const Icon(Icons.add, size: 17), label: const Text('Receive'))
+                        FilledButton.tonalIcon(
+                          onPressed: () => _showReceiveDialog(context, medicine),
+                          icon: const Icon(Icons.add, size: 17),
+                          label: const Text('Receive'),
+                        )
                       else
-                        Text(isLow ? 'Low stock' : 'Available'),
+                        Text(isLow ? 'Low stock' : 'Available', style: const TextStyle(fontSize: 12, color: Color(0xff68807d))),
                     ],
                   ),
                 );
@@ -478,12 +487,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
                     ]),
                     const SizedBox(height: 8),
-                    const Text('Stock on hand and the daily in/out log update together.', style: TextStyle(color: Color(0xff68807d), height: 1.4)),
+                    const Text('This quantity is added to the medicine already on the shelf. A later expiry is stored as another batch.', style: TextStyle(color: Color(0xff68807d), height: 1.4)),
+                    const SizedBox(height: 10),
+                    Text(
+                      'On hand now: ${medicine.stockLabel()}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, color: PhyimacyBrand.teal),
+                    ),
                     const SizedBox(height: 22),
                     TextFormField(controller: batch, decoration: const InputDecoration(labelText: 'Batch number', prefixIcon: Icon(Icons.qr_code_2_rounded)), validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null),
                     const SizedBox(height: 10),
                     Row(children: [
-                      Expanded(child: TextFormField(controller: quantity, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: medicine.sellsLoose ? 'Packs received' : 'Quantity', prefixIcon: const Icon(Icons.inventory_2_outlined)), validator: (value) => int.tryParse(value ?? '') == null ? 'Enter a whole number' : null)),
+                      Expanded(child: TextFormField(controller: quantity, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: medicine.piecesPerPack > 1 ? 'Packs received' : 'Quantity', prefixIcon: const Icon(Icons.inventory_2_outlined)), validator: (value) => int.tryParse(value ?? '') == null ? 'Enter a whole number' : null)),
                       const SizedBox(width: 12),
                       Expanded(child: TextFormField(controller: cost, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Unit cost (TZS)', prefixIcon: Icon(Icons.payments_outlined)), validator: (value) => int.tryParse(value ?? '') == null ? 'Enter a whole number' : null)),
                     ]),

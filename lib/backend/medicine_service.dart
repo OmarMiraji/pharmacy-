@@ -9,6 +9,7 @@ import 'models.dart';
 import 'offline_sync_service.dart';
 import 'expiry_priority.dart';
 import 'expiry_stock.dart';
+import 'medicine_match.dart';
 import 'stock_ledger.dart';
 import 'selling_units.dart';
 import 'tenant_context.dart';
@@ -42,9 +43,6 @@ class MedicineService {
   static StreamController<List<Medicine>>? _medicineEvents;
   static StreamController<List<MedicineBatch>>? _batchEvents;
   static StreamController<List<CategoryOption>>? _categoryEvents;
-  static Stream<List<Medicine>>? _medicineView;
-  static Stream<List<MedicineBatch>>? _batchView;
-  static Stream<List<CategoryOption>>? _categoryView;
   static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _medicineSub;
   static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _batchSub;
   static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _categorySub;
@@ -78,9 +76,6 @@ class MedicineService {
     _medicineEvents = null;
     _batchEvents = null;
     _categoryEvents = null;
-    _medicineView = null;
-    _batchView = null;
-    _categoryView = null;
     _lastMedicines = null;
     _lastBatches = null;
     _lastCategories = null;
@@ -105,33 +100,46 @@ class MedicineService {
     _medicineSub = _tenant
         .scoped(_medicines)
         .where('isActive', isEqualTo: true)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
+      if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
       final latest = snapshot.docs.map(Medicine.fromFirestore).toList()
         ..sort((a, b) => a.name.compareTo(b.name));
       _lastMedicines = latest;
       emitMedicines();
     }, onError: (Object error, StackTrace stack) {
+      if (OfflineSyncService.isNetworkError(error)) {
+        OfflineSyncService.instance.noteDisconnected();
+        emitMedicines();
+        return;
+      }
       _medicineEvents?.addError(error, stack);
     });
 
     _offlineListener = emitMedicines;
     OfflineSyncService.instance.addListener(_offlineListener!);
 
-    _batchSub = _tenant.scoped(_batches).snapshots().listen((snapshot) {
+    _batchSub = _tenant.scoped(_batches).snapshots(includeMetadataChanges: true).listen((snapshot) {
+      if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
       final batches = snapshot.docs.map(MedicineBatch.fromFirestore).toList()
         ..sort((a, b) => a.expiryDate.compareTo(b.expiryDate));
       _lastBatches = batches;
       _batchEvents?.add(batches);
     }, onError: (Object error, StackTrace stack) {
+      if (OfflineSyncService.isNetworkError(error) && _lastBatches != null) {
+        OfflineSyncService.instance.noteDisconnected();
+        _batchEvents?.add(_lastBatches!);
+        return;
+      }
       _batchEvents?.addError(error, stack);
     });
 
     _categorySub = _tenant
         .scoped(_categories)
         .where('isActive', isEqualTo: true)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
+      if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
       final categories = snapshot.docs
           .map((doc) => CategoryOption(id: doc.id, name: doc.data()['name'] as String? ?? ''))
           .where((category) => category.name.isNotEmpty)
@@ -140,6 +148,11 @@ class MedicineService {
       _lastCategories = categories;
       _categoryEvents?.add(categories);
     }, onError: (Object error, StackTrace stack) {
+      if (OfflineSyncService.isNetworkError(error) && _lastCategories != null) {
+        OfflineSyncService.instance.noteDisconnected();
+        _categoryEvents?.add(_lastCategories!);
+        return;
+      }
       _categoryEvents?.addError(error, stack);
     });
   }
@@ -160,12 +173,12 @@ class MedicineService {
   Stream<List<Medicine>> watchMedicines() {
     _ensureSharedShop();
     final cached = _lastMedicines == null ? null : OfflineSyncService.instance.applyLocalStock(_lastMedicines!);
-    return _medicineView ??= _replay(cached, _medicineEvents);
+    return _replay(cached, _medicineEvents);
   }
 
   Stream<List<CategoryOption>> watchCategories() {
     _ensureSharedShop();
-    return _categoryView ??= _replay(_lastCategories, _categoryEvents);
+    return _replay(_lastCategories, _categoryEvents);
   }
 
   Stream<List<MedicineBatch>> watchBatches(String medicineId) {
@@ -174,7 +187,7 @@ class MedicineService {
 
   Stream<List<MedicineBatch>> watchAllBatches() {
     _ensureSharedShop();
-    return _batchView ??= _replay(_lastBatches, _batchEvents);
+    return _replay(_lastBatches, _batchEvents);
   }
 
   Future<void> createCategory(String name) async {
@@ -305,9 +318,12 @@ class MedicineService {
           stripSize: int.tryParse('${row['strip_size'] ?? '0'}'.trim()) ?? 0,
           boxSize: int.tryParse('${row['box_size'] ?? '0'}'.trim()) ?? 0,
           minSaleQty: int.tryParse('${row['min_sale_qty'] ?? '0'}'.trim()) ?? 0,
-          allowLooseSale: packSize > 1,
+          allowLooseSale: BaseUnits.sellsByPiece('${row['unit'] ?? 'Tablet'}'),
           expiryDate: expiry,
           openingQuantity: openingQty,
+          openingAsTablets: BaseUnits.sellsByPiece('${row['unit'] ?? 'Tablet'}') &&
+              '${row['stock_as'] ?? ''}'.trim().toLowerCase() != 'packs' &&
+              '${row['stock_as'] ?? ''}'.trim().toLowerCase() != 'pack',
           batchNumber: '${row['batch_number'] ?? ''}',
           createdBy: 'import',
         );
@@ -503,10 +519,13 @@ class MedicineService {
     bool allowLooseSale = false,
     DateTime? expiryDate,
     int openingQuantity = 0,
+    bool openingAsTablets = true,
     String? batchNumber,
     required String createdBy,
   }) async {
     _tenant.assertWritable();
+    final existing = await findExistingByName(name);
+    if (existing != null) return existing.id;
     if (name.trim().isEmpty || sku.trim().isEmpty || categoryId.trim().isEmpty) {
       throw ArgumentError('Name, SKU, and category are required.');
     }
@@ -520,10 +539,12 @@ class MedicineService {
       throw ArgumentError('Expiry date is required when adding opening stock.');
     }
     final ref = _medicines.doc();
+    final size = packSize < 1 ? 1 : packSize;
+    final loose = BaseUnits.sellsByPiece(unit) || allowLooseSale;
+    final countOpeningAsTablets = openingAsTablets || !BaseUnits.sellsByPiece(unit) || size <= 1;
+    final stockQty = countOpeningAsTablets ? openingQuantity : openingQuantity * size;
     if (openingQuantity > 0 && expiryDate != null) {
       final code = (batchNumber ?? '').trim();
-      final size = packSize < 1 ? 1 : packSize;
-      final stockQty = size > 1 ? openingQuantity * size : openingQuantity;
       final batchRef = _batches.doc();
       final movementRef = _firestore.collection(FirestoreCollections.stockMovements).doc();
       await _firestore.runTransaction((transaction) async {
@@ -543,7 +564,7 @@ class MedicineService {
           'stripSize': stripSize < 0 ? 0 : stripSize,
           'boxSize': boxSize < 0 ? 0 : boxSize,
           'minSaleQty': minSaleQty < 0 ? 0 : minSaleQty,
-          'allowLooseSale': packSize > 1,
+          'allowLooseSale': loose,
           'expiryDate': Timestamp.fromDate(expiryDate),
           'createdAt': now,
           'updatedAt': now,
@@ -589,12 +610,117 @@ class MedicineService {
       'stripSize': stripSize < 0 ? 0 : stripSize,
       'boxSize': boxSize < 0 ? 0 : boxSize,
       'minSaleQty': minSaleQty < 0 ? 0 : minSaleQty,
-      'allowLooseSale': packSize > 1,
+      'allowLooseSale': BaseUnits.sellsByPiece(unit) || allowLooseSale,
       if (expiryDate != null) 'expiryDate': Timestamp.fromDate(expiryDate),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }));
     return ref.id;
+  }
+
+  Future<Medicine?> findExistingByName(String name) async {
+    final cached = _lastMedicines;
+    final local = MedicineMatch.findIn(cached ?? const [], name);
+    if (local != null) return local;
+    try {
+      final snapshot = await _tenant.scoped(_medicines).where('isActive', isEqualTo: true).get();
+      return MedicineMatch.findIn(snapshot.docs.map(Medicine.fromFirestore), name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static var _didConsolidate = false;
+
+  Future<void> consolidateDuplicateMedicinesOnce() async {
+    if (_didConsolidate) return;
+    _didConsolidate = true;
+    try {
+      await _consolidateDuplicateMedicines();
+    } catch (_) {
+      _didConsolidate = false;
+    }
+  }
+
+  Future<void> _consolidateDuplicateMedicines() async {
+    _tenant.assertWritable();
+    final snapshot = await _tenant.scoped(_medicines).where('isActive', isEqualTo: true).get();
+    final groups = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    for (final doc in snapshot.docs) {
+      final name = doc.data()['name'] as String? ?? '';
+      final id = MedicineMatch.key(name);
+      if (id.isEmpty) continue;
+      groups.putIfAbsent(id, () => []).add(doc);
+    }
+    for (final group in groups.values) {
+      if (group.length < 2) continue;
+      group.sort((a, b) {
+        final qtyA = (a.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+        final qtyB = (b.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+        if (qtyA != qtyB) return qtyB.compareTo(qtyA);
+        return a.id.compareTo(b.id);
+      });
+      final primary = group.first;
+      var extraQty = 0;
+      for (final extra in group.skip(1)) {
+        extraQty += (extra.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+        final batches = await _tenant.scoped(_batches).where('medicineId', isEqualTo: extra.id).get();
+        for (final batch in batches.docs) {
+          await batch.reference.update({
+            'medicineId': primary.id,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+        await extra.reference.update({
+          'isActive': false,
+          'quantityOnHand': 0,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      if (extraQty > 0) {
+        final current = (primary.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+        await primary.reference.update({
+          'quantityOnHand': current + extraQty,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+  }
+
+  Future<String> createQuickMedicine({
+    required String name,
+    required int sellingPriceMinor,
+    required String createdBy,
+  }) async {
+    final existing = await findExistingByName(name);
+    if (existing != null) return existing.id;
+    List<CategoryOption> categories = _lastCategories ?? const [];
+    if (categories.isEmpty) {
+      try {
+        categories = await watchCategories().first.timeout(const Duration(seconds: 4));
+      } catch (_) {}
+    }
+    if (categories.isEmpty) {
+      await createCategory('General');
+      try {
+        categories = await watchCategories().first.timeout(const Duration(seconds: 4));
+      } catch (_) {}
+    }
+    if (categories.isEmpty) {
+      throw StateError('Could not create a medicine category.');
+    }
+    final sku = 'MED-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+    return createMedicine(
+      name: name,
+      sku: sku,
+      categoryId: categories.first.id,
+      unit: 'unit',
+      purchasePriceMinor: 0,
+      sellingPriceMinor: sellingPriceMinor,
+      reorderLevel: 0,
+      requiresPrescription: false,
+      createdBy: createdBy,
+    );
   }
 
   Future<void> updateMedicine({
@@ -622,7 +748,7 @@ class MedicineService {
       throw ArgumentError('Prices and reorder level cannot be negative.');
     }
     final size = packSize < 1 ? 1 : packSize;
-    final loose = size > 1;
+    final loose = BaseUnits.sellsByPiece(unit) || allowLooseSale;
     final current = await _medicines.doc(medicineId).get();
     final previous = current.data() ?? const <String, dynamic>{};
     final oldPack = (previous['packSize'] as num?)?.toInt() ?? 1;

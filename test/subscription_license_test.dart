@@ -41,6 +41,26 @@ void main() {
       expect(license.canWrite, isFalse);
     });
 
+    test('trial ending later today is already blocked on that calendar date', () {
+      final now = DateTime.now();
+      final laterToday = DateTime(now.year, now.month, now.day, 23, 59);
+      final license = SubscriptionService.licenseFromPharmacy(
+        _pharmacy(isTrial: true, expiresAt: laterToday),
+      );
+      expect(license.access, PharmacyAccess.blocked);
+      expect(license.hasExpired, isTrue);
+    });
+
+    test('trial ending tomorrow stays writable', () {
+      final now = DateTime.now();
+      final tomorrow = DateTime(now.year, now.month, now.day).add(const Duration(days: 1, hours: 10));
+      final license = SubscriptionService.licenseFromPharmacy(
+        _pharmacy(isTrial: true, expiresAt: tomorrow),
+      );
+      expect(license.access, PharmacyAccess.full);
+      expect(license.hasExpired, isFalse);
+    });
+
     test('expired paid subscription is read only', () {
       final license = SubscriptionService.licenseFromPharmacy(
         _pharmacy(

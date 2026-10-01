@@ -358,8 +358,6 @@ class _UsersPane extends StatelessWidget {
                         if (snapshot.hasError) return Text('${snapshot.error}');
                         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                         final list = snapshot.data!.where((user) {
-                          if (user.isSuperAdmin) return false;
-                          if (user.id == profile.id) return false;
                           final shopId = (user.pharmacyId ?? '').trim();
                           if (shopFilter != null) {
                             if (shopFilter == '') {
