@@ -182,7 +182,7 @@ class AppUpdateService {
         version: tag,
         buildNumber: 0,
         downloadUrl: downloadUrl,
-        notes: (json['body'] as String? ?? '').trim(),
+        notes: '',
         publishedAt: published == null ? null : DateTime.tryParse(published),
         githubRepo: cleaned,
         sha256: sha256,

@@ -8,9 +8,6 @@ Future<void> applyPhyimacyUpdate(BuildContext context, AppRelease release) async
     builder: (context) {
       return AlertDialog(
         title: const Text('Install update'),
-        content: Text(
-          'PharmSpecio ${release.version} will download from GitHub. Windows may ask for Administrator — click Yes. Then this app closes and reopens by itself.',
-        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Update now')),

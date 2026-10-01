@@ -73,8 +73,27 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      unawaited(_authService.signOut());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -437,8 +456,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     color: const Color(0xffe8f6f2),
                     child: ListTile(
                       leading: const Icon(Icons.system_update_alt_rounded, color: Color(0xff0f766e)),
-                      title: Text('New ${PhyimacyBrand.appName} ${_appUpdate!.latest!.version} is available'),
-                      subtitle: const Text('Tap Update. PharmSpecio installs it and reopens by itself.'),
+                      title: Text('New version ${_appUpdate!.latest!.version} is available'),
                       trailing: FilledButton(
                         onPressed: _appUpdate!.latest!.canAutoInstall
                             ? () => applyPhyimacyUpdate(context, _appUpdate!.latest!)

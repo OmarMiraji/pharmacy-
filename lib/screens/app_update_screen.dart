@@ -96,11 +96,6 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('App updates', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
-          const SizedBox(height: 8),
-          const Text(
-            'One button installs the update. Phyimacy downloads the official GitHub zip, checks SHA-256, replaces this app, and reopens. Nobody unzips files by hand.',
-            style: TextStyle(color: Color(0xff68807d)),
-          ),
           const SizedBox(height: 18),
           if (_loading)
             const Padding(
@@ -127,11 +122,6 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.system_update_alt_rounded, color: Color(0xff0f766e)),
                   title: Text('New version ${latest.version} is available'),
-                  subtitle: Text(
-                    latest.canAutoInstall
-                        ? (latest.notes.isEmpty ? 'Install now. The app will close and reopen by itself.' : latest.notes)
-                        : 'This release is not a verified GitHub zip yet.',
-                  ),
                   trailing: FilledButton(
                     onPressed: latest.canAutoInstall ? () => applyPhyimacyUpdate(context, latest) : null,
                     child: const Text('Update now'),
