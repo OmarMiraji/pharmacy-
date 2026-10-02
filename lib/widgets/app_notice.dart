@@ -147,6 +147,15 @@ String friendlyActionError(Object error) {
   if (lower.contains('permission-denied') || lower.contains('insufficient permissions') || lower.contains('missing or insufficient')) {
     return S.t('Could not save. Try again.', 'Haikuweza kuhifadhi. Jaribu tena.');
   }
+  if (lower.contains('pigeon') ||
+      lower.contains('unable to establish connection') ||
+      lower.contains('cloudfunctionshostapi') ||
+      lower.contains('channel') ||
+      lower.contains('httpconnection') ||
+      lower.contains('before full header') ||
+      lower.contains('cloudfunctions.net')) {
+    return S.t('Could not create that login. Check internet, then try again.', 'Haikuweza kutengeneza login. Angalia mtandao, kisha jaribu tena.');
+  }
   if (lower.contains('network') || lower.contains('unavailable') || lower.contains('offline')) {
     return S.t('Connection lost. Try again.', 'Muunganisho umekatika. Jaribu tena.');
   }

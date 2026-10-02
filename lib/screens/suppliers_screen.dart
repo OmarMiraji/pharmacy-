@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../backend/purchase_service.dart';
+import '../backend/tanzania_phone.dart';
 import '../backend/user_profile.dart';
+import '../l10n/app_locale.dart';
 import '../theme/brand.dart';
 
 class SuppliersScreen extends StatelessWidget {
@@ -135,7 +137,8 @@ class SuppliersScreen extends StatelessWidget {
     final email = TextEditingController();
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) => AlertDialog(
         title: const Text('Add supplier'),
         content: SizedBox(
           width: 420,
@@ -144,7 +147,17 @@ class SuppliersScreen extends StatelessWidget {
             children: [
               TextField(controller: name, decoration: const InputDecoration(labelText: 'Supplier name', hintText: 'Example: Mzigo Pharma')),
               const SizedBox(height: 12),
-              TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone (optional)')),
+              TextField(
+                controller: phone,
+                keyboardType: TextInputType.phone,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: S.t('Phone (optional)', 'Simu (si lazima)'),
+                  hintText: TanzaniaPhone.hint,
+                  helperText: S.t('Tanzania mobile, e.g. 0712345678', 'Simu ya Tanzania, mfano 0712345678'),
+                  errorText: TanzaniaPhone.validate(phone.text),
+                ),
+              ),
               const SizedBox(height: 12),
               TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email (optional)')),
             ],
@@ -153,18 +166,21 @@ class SuppliersScreen extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
           FilledButton(
-            onPressed: () async {
+            onPressed: TanzaniaPhone.validate(phone.text) == null
+                ? () async {
               final supplierName = name.text.trim();
               if (supplierName.isEmpty) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Supplier name is required.')));
                 return;
               }
-              await service.createSupplier(name: supplierName, phone: phone.text, email: email.text);
+              await service.createSupplier(name: supplierName, phone: TanzaniaPhone.normalize(phone.text), email: email.text);
               if (dialogContext.mounted) Navigator.pop(dialogContext);
-            },
+            }
+                : null,
             child: const Text('Save'),
           ),
         ],
+      ),
       ),
     );
     name.dispose();

@@ -16,6 +16,6 @@ void main() {
   testWidgets('Medicine import screen shows upload csv file action', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: MedicineImportScreen()));
 
-    expect(find.text('Upload CSV file'), findsOneWidget);
+    expect(find.text('Upload Excel file'), findsOneWidget);
   });
 }

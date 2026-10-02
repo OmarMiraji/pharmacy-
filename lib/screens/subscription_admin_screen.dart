@@ -5,6 +5,7 @@ import '../backend/audit_log_service.dart';
 import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/subscription_service.dart';
+import '../backend/transactional_email_service.dart';
 import '../backend/user_profile.dart';
 
 class SubscriptionAdminScreen extends StatefulWidget {
@@ -30,6 +31,8 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
   bool _creating = false;
   String? _lastToken;
   String? _selectedPharmacyId;
+  String? _lastEmailNote;
+  bool _emailToken = true;
 
   @override
   void dispose() {
@@ -43,6 +46,13 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
   int get _days => _plan == 'custom' ? (int.tryParse(_customDaysController.text.trim()) ?? 30) : _durationDays;
 
   Future<void> _generateToken() async {
+    final sendTo = _tokenEmailController.text.trim();
+    if (_emailToken && (sendTo.isEmpty || !sendTo.contains('@'))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter the customer email to send this token.')),
+      );
+      return;
+    }
     setState(() => _creating = true);
     try {
       final token = await _service.createActivationToken(
@@ -50,7 +60,7 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
         durationDays: _days,
         startsAt: _startsAt,
         pharmacyId: _selectedPharmacyId,
-        ownerEmail: _tokenEmailController.text.trim(),
+        ownerEmail: sendTo,
         note: _noteController.text.trim(),
       );
       await Clipboard.setData(ClipboardData(text: token));
@@ -59,10 +69,31 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
         pharmacyId: _selectedPharmacyId,
         detail: token,
       );
-      setState(() => _lastToken = token);
+      String? mailNote;
+      if (_emailToken) {
+        String shopName = '';
+        if ((_selectedPharmacyId ?? '').isNotEmpty) {
+          final shop = await PharmacyService().getPharmacy(_selectedPharmacyId!);
+          shopName = shop?.name ?? '';
+        }
+        mailNote = await TransactionalEmailService().notifyLicenseToken(
+          toEmail: sendTo,
+          shopName: shopName,
+          token: token,
+          plan: _plan,
+          days: _days,
+        );
+      }
+      setState(() {
+        _lastToken = token;
+        _lastEmailNote = mailNote;
+      });
       if (mounted) {
+        final sent = _emailToken && mailNote == null
+            ? ' Token emailed to $sendTo.'
+            : (mailNote == null ? '' : ' $mailNote');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Token created and copied: $token')),
+          SnackBar(content: Text('Token created and copied: $token.$sent')),
         );
       }
     } catch (error) {
@@ -99,6 +130,16 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
         pharmacyId: pharmacyId,
         detail: 'until ${expiresAt.day}/${expiresAt.month}/${expiresAt.year}',
       );
+      try {
+        final pharmacy = await PharmacyService().getPharmacy(pharmacyId);
+        await TransactionalEmailService().notifySubscriptionActivated(
+          toEmail: pharmacy?.ownerEmail ?? '',
+          displayName: pharmacy?.name ?? '',
+          shopName: pharmacy?.name ?? '',
+          plan: _plan == 'custom' ? 'custom' : _plan,
+          expiresAt: expiresAt,
+        );
+      } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Pharmacy licensed until ${expiresAt.day}/${expiresAt.month}/${expiresAt.year}. Write access is restored.')),
@@ -123,6 +164,65 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
     if (picked != null) setState(() => _startsAt = picked);
   }
 
+  Future<void> _deleteToken(ActivationCodeRecord code) async {
+    final unused = !code.isUsed;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this token?'),
+        content: Text(
+          unused
+              ? 'Remove ${code.code} from your list. Nobody will be able to activate with it after this.'
+              : 'Remove ${code.code} from your list only. The pharmacy that already used it stays licensed.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteActivationToken(code.code);
+      await AuditLogService().record(action: 'TOKEN_DELETED', detail: code.code);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(unused ? 'Token deleted. It can no longer be used.' : 'Token removed from your list. Shop license is unchanged.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not delete token: $error')));
+    }
+  }
+
+  Future<void> _deleteUnusedTokens() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete unused tokens?'),
+        content: const Text(
+          'This removes every token that has not been used yet. Used tokens stay. Shops that already activated keep their license.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete unused')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final count = await _service.deleteUnusedActivationTokens();
+      await AuditLogService().record(action: 'UNUSED_TOKENS_DELETED', detail: '$count');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(count == 0 ? 'No unused tokens.' : 'Deleted $count unused token${count == 1 ? '' : 's'}.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not delete unused tokens: $error')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -144,7 +244,23 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
           ],
         ),
         const SizedBox(height: 22),
-        const Text('Activation tokens', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Activation tokens', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+            ),
+            TextButton.icon(
+              onPressed: _deleteUnusedTokens,
+              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+              label: const Text('Delete unused tokens'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Delete only removes the token from this list. A shop that already activated keeps its license.',
+          style: TextStyle(color: Color(0xff68807d), height: 1.4),
+        ),
         const SizedBox(height: 8),
         _buildCodesTable(),
         const SizedBox(height: 22),
@@ -167,7 +283,15 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
             for (final pharmacy in pharmacies)
               DropdownMenuItem(value: pharmacy.id, child: Text(pharmacy.name)),
           ],
-          onChanged: (value) => setState(() => _selectedPharmacyId = value),
+          onChanged: (value) async {
+            setState(() => _selectedPharmacyId = value);
+            if ((value ?? '').isEmpty) return;
+            final shop = await _pharmacies.getPharmacy(value!);
+            if (!mounted) return;
+            if ((shop?.ownerEmail ?? '').trim().isNotEmpty) {
+              _tokenEmailController.text = shop!.ownerEmail!.trim();
+            }
+          },
         );
       },
     );
@@ -213,7 +337,16 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: _tokenEmailController,
-              decoration: const InputDecoration(labelText: 'Customer email (note)'),
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Send token to this email'),
+            ),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _emailToken,
+              onChanged: (value) => setState(() => _emailToken = value ?? true),
+              title: const Text('Email this token now'),
+              subtitle: const Text('Uses Gmail in Email settings'),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -235,6 +368,10 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
             if (_lastToken != null) ...[
               const SizedBox(height: 12),
               SelectableText(_lastToken!, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xff0f766e))),
+              if (_lastEmailNote != null) ...[
+                const SizedBox(height: 6),
+                Text(_lastEmailNote!, style: const TextStyle(color: Color(0xff68807d))),
+              ],
             ],
           ],
         ),
@@ -291,7 +428,7 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
               DataColumn(label: Text('')),
             ],
             rows: [
-              for (final code in codes.take(40))
+              for (final code in codes)
                 DataRow(
                   cells: [
                     DataCell(SelectableText(code.code, style: const TextStyle(fontWeight: FontWeight.w700))),
@@ -300,10 +437,19 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
                     DataCell(Text(code.isUsed ? 'Used' : 'Unused')),
                     DataCell(Text(code.usedByPharmacyId ?? code.pharmacyId ?? '—')),
                     DataCell(
-                      IconButton(
-                        tooltip: 'Copy',
-                        onPressed: () => Clipboard.setData(ClipboardData(text: code.code)),
-                        icon: const Icon(Icons.copy_rounded, size: 18),
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Copy',
+                            onPressed: () => Clipboard.setData(ClipboardData(text: code.code)),
+                            icon: const Icon(Icons.copy_rounded, size: 18),
+                          ),
+                          IconButton(
+                            tooltip: 'Delete from your list',
+                            onPressed: () => _deleteToken(code),
+                            icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xffb42318)),
+                          ),
+                        ],
                       ),
                     ),
                   ],

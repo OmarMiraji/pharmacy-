@@ -4,6 +4,8 @@ import '../backend/permissions.dart';
 import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/tenant_context.dart';
+import '../backend/tanzania_phone.dart';
+import '../backend/transactional_email_service.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
 import '../l10n/app_locale.dart';
@@ -22,10 +24,14 @@ Future<void> showCreateStaffDialog(
   final confirmPassword = TextEditingController();
   final phone = TextEditingController();
   final employeeCode = TextEditingController();
+  final pharmacyName = TextEditingController();
+  final pharmacySearch = TextEditingController();
   var role = canManageSuperAdmin ? 'admin' : 'pharmacist';
   var hidePassword = true;
   var hideConfirm = true;
+  var shopMode = 'existing';
   var selectedPharmacyId = (presetPharmacyId ?? TenantContext.instance.pharmacyId ?? '').trim();
+  var creating = false;
   final visiblePermissions = AppPermissions.shopTickList(includeDeveloper: canManageSuperAdmin);
   final permissions = <String, bool>{
     for (final permission in visiblePermissions) permission: AppPermissions.resolvedPermissions(role)[permission] == true,
@@ -38,8 +44,8 @@ Future<void> showCreateStaffDialog(
         builder: (context, setState) => Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: SizedBox(
-            width: 680,
-            height: 640,
+            width: 720,
+            height: 700,
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -65,9 +71,9 @@ Future<void> showCreateStaffDialog(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          TextField(controller: name, decoration: InputDecoration(labelText: S.t('Full name', 'Jina kamili'))),
+                          TextField(controller: name, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: S.t('Full name', 'Jina kamili'))),
                           const SizedBox(height: 10),
-                          TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: S.t('Email', 'Email'))),
+                          TextField(controller: email, keyboardType: TextInputType.emailAddress, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: S.t('Email', 'Email'))),
                           const SizedBox(height: 10),
                           TextField(
                             controller: password,
@@ -97,29 +103,143 @@ Future<void> showCreateStaffDialog(
                             ),
                           ),
                           const SizedBox(height: 10),
-                          TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: S.t('Phone (optional)', 'Simu (si lazima)'))),
+                          TextField(
+                            controller: phone,
+                            keyboardType: TextInputType.phone,
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: S.t('Phone (optional)', 'Simu (si lazima)'),
+                              hintText: TanzaniaPhone.hint,
+                              helperText: S.t('Tanzania mobile, e.g. 0712345678', 'Simu ya Tanzania, mfano 0712345678'),
+                              errorText: TanzaniaPhone.validate(phone.text),
+                            ),
+                          ),
                           const SizedBox(height: 10),
                           TextField(controller: employeeCode, decoration: InputDecoration(labelText: S.t('Staff code (optional)', 'Namba ya staff (si lazima)'))),
                           if (canManageSuperAdmin) ...[
-                            const SizedBox(height: 10),
-                            StreamBuilder<List<PharmacyRecord>>(
-                              stream: PharmacyService().watchPharmacies(),
-                              builder: (context, snapshot) {
-                                final pharmacies = snapshot.data ?? const <PharmacyRecord>[];
-                                return DropdownButtonFormField<String>(
-                                  initialValue: pharmacies.any((shop) => shop.id == selectedPharmacyId) ? selectedPharmacyId : null,
-                                  decoration: InputDecoration(labelText: S.t('Shop', 'Duka')),
-                                  items: [
-                                    for (final shop in pharmacies) DropdownMenuItem(value: shop.id, child: Text(shop.name)),
-                                  ],
-                                  onChanged: (value) => setState(() => selectedPharmacyId = value ?? ''),
-                                );
-                              },
+                            const SizedBox(height: 14),
+                            Text(S.t('Pharmacy', 'Duka'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xff0f766e))),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _ShopModeCard(
+                                    selected: shopMode == 'existing',
+                                    icon: Icons.storefront_outlined,
+                                    title: S.t('Existing pharmacy', 'Duka lililopo'),
+                                    subtitle: S.t('Assign this login to a shop already on the list.', 'Weka login hii kwenye duka lililopo.'),
+                                    onTap: () => setState(() => shopMode = 'existing'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _ShopModeCard(
+                                    selected: shopMode == 'new',
+                                    icon: Icons.add_business_outlined,
+                                    title: S.t('New pharmacy', 'Duka jipya'),
+                                    subtitle: S.t('Create a shop and make this person its admin.', 'Tengeneza duka na mtu huyu awe admin.'),
+                                    onTap: () => setState(() {
+                                      shopMode = 'new';
+                                      role = 'admin';
+                                      for (final permission in visiblePermissions) {
+                                        permissions[permission] = AppPermissions.resolvedPermissions('admin')[permission] == true;
+                                      }
+                                    }),
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 12),
+                            if (shopMode == 'existing')
+                              StreamBuilder<List<PharmacyRecord>>(
+                                stream: PharmacyService().watchPharmacies(),
+                                builder: (context, snapshot) {
+                                  final query = pharmacySearch.text.trim().toLowerCase();
+                                  final pharmacies = (snapshot.data ?? const <PharmacyRecord>[])
+                                      .where((shop) => query.isEmpty || shop.name.toLowerCase().contains(query))
+                                      .toList();
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      TextField(
+                                        controller: pharmacySearch,
+                                        onChanged: (_) => setState(() {}),
+                                        decoration: InputDecoration(
+                                          labelText: S.t('Search pharmacies', 'Tafuta maduka'),
+                                          prefixIcon: const Icon(Icons.search_rounded),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        height: 168,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: const Color(0xffd7e7e4)),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: snapshot.connectionState == ConnectionState.waiting && snapshot.data == null
+                                            ? const Center(child: CircularProgressIndicator())
+                                            : pharmacies.isEmpty
+                                                ? Center(
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.all(16),
+                                                      child: Text(
+                                                        S.t('No pharmacy matches. Choose New pharmacy.', 'Hakuna duka linalofanana. Chagua Duka jipya.'),
+                                                        textAlign: TextAlign.center,
+                                                        style: const TextStyle(color: Color(0xff68807d)),
+                                                      ),
+                                                    ),
+                                                  )
+                                                : ListView.separated(
+                                                    itemCount: pharmacies.length,
+                                                    separatorBuilder: (_, index) => const Divider(height: 1),
+                                                    itemBuilder: (context, index) {
+                                                      final shop = pharmacies[index];
+                                                      final selected = shop.id == selectedPharmacyId;
+                                                      return ListTile(
+                                                        dense: true,
+                                                        selected: selected,
+                                                        leading: Icon(
+                                                          selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                                                          color: const Color(0xff0f766e),
+                                                        ),
+                                                        title: Text(shop.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                                        subtitle: Text(
+                                                          shop.ownerEmail ?? shop.address ?? shop.id,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                        onTap: () => setState(() => selectedPharmacyId = shop.id),
+                                                      );
+                                                    },
+                                                  ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              )
+                            else ...[
+                              TextField(
+                                controller: pharmacyName,
+                                onChanged: (_) => setState(() {}),
+                                decoration: InputDecoration(
+                                  labelText: S.t('Pharmacy name', 'Jina la duka'),
+                                  hintText: S.t('e.g. Family Pharmacy', 'mfano Family Pharmacy'),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                S.t(
+                                  'This login will be the shop admin for the new pharmacy.',
+                                  'Login hii itakuwa admin wa duka jipya.',
+                                ),
+                                style: const TextStyle(fontSize: 12, color: Color(0xff68807d), height: 1.35),
+                              ),
+                            ],
                           ],
                           const SizedBox(height: 10),
                           DropdownButtonFormField<String>(
-                            initialValue: role,
+                            key: ValueKey('role-$shopMode-$role'),
+                            initialValue: shopMode == 'new' ? 'admin' : role,
                             decoration: InputDecoration(labelText: S.t('Role', 'Wajibu')),
                             items: [
                               if (canManageSuperAdmin) DropdownMenuItem(value: 'admin', child: Text(S.t('Admin', 'Admin'))),
@@ -127,7 +247,9 @@ Future<void> showCreateStaffDialog(
                               DropdownMenuItem(value: 'cashier', child: Text(S.t('Cashier', 'Cashier'))),
                               DropdownMenuItem(value: 'storekeeper', child: Text(S.t('Storekeeper', 'Storekeeper'))),
                             ],
-                            onChanged: (value) => setState(() {
+                            onChanged: shopMode == 'new'
+                                ? null
+                                : (value) => setState(() {
                               role = value ?? role;
                               for (final permission in visiblePermissions) {
                                 permissions[permission] = AppPermissions.resolvedPermissions(role)[permission] == true;
@@ -177,33 +299,83 @@ Future<void> showCreateStaffDialog(
                       TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
                       const SizedBox(width: 10),
                       FilledButton(
-                        onPressed: password.text.trim().length >= 6 && password.text == confirmPassword.text
+                        onPressed: !creating &&
+                                name.text.trim().isNotEmpty &&
+                                email.text.trim().isNotEmpty &&
+                                password.text.trim().length >= 6 &&
+                                password.text == confirmPassword.text &&
+                                TanzaniaPhone.validate(phone.text) == null &&
+                                (!canManageSuperAdmin ||
+                                    (shopMode == 'new'
+                                        ? pharmacyName.text.trim().isNotEmpty
+                                        : selectedPharmacyId.trim().isNotEmpty))
                             ? () async {
+                          setState(() => creating = true);
                           try {
-                            final shopId = canManageSuperAdmin ? selectedPharmacyId : TenantContext.instance.pharmacyId;
-                            await service.createLoginAndProfile(
-                              displayName: name.text,
-                              email: email.text,
-                              password: password.text,
-                              phone: phone.text,
-                              employeeCode: employeeCode.text,
-                              role: role,
-                              permissions: role == 'admin' ? AppPermissions.resolvedPermissions('admin') : permissions,
-                              isActive: true,
-                              pharmacyId: shopId,
-                            );
+                            var createdShopId = canManageSuperAdmin ? selectedPharmacyId : (TenantContext.instance.pharmacyId ?? '');
+                            if (canManageSuperAdmin && shopMode == 'new') {
+                              final provision = await PharmacyService().createPharmacy(
+                                name: pharmacyName.text.trim(),
+                                ownerEmail: email.text,
+                                ownerDisplayName: name.text,
+                                ownerPassword: password.text,
+                              );
+                              createdShopId = provision.pharmacyId;
+                              await service.updateProfileDetails(
+                                userId: provision.adminUid,
+                                displayName: name.text,
+                                email: email.text,
+                                phone: TanzaniaPhone.normalize(phone.text),
+                                employeeCode: employeeCode.text,
+                                role: 'admin',
+                                permissions: AppPermissions.resolvedPermissions('admin'),
+                                isActive: true,
+                                pharmacyId: provision.pharmacyId,
+                              );
+                            } else {
+                              await service.createLoginAndProfile(
+                                displayName: name.text,
+                                email: email.text,
+                                password: password.text,
+                                phone: TanzaniaPhone.normalize(phone.text),
+                                employeeCode: employeeCode.text,
+                                role: role,
+                                permissions: role == 'admin' ? AppPermissions.resolvedPermissions('admin') : permissions,
+                                isActive: true,
+                                pharmacyId: createdShopId,
+                              );
+                            }
                             if (dialogContext.mounted) Navigator.pop(dialogContext);
+                            String? mailNote;
+                            try {
+                              mailNote = await TransactionalEmailService().notifyLoginCreated(
+                                toEmail: email.text,
+                                displayName: name.text,
+                                role: (canManageSuperAdmin && shopMode == 'new') ? 'admin' : role,
+                                pharmacyId: createdShopId,
+                                shopName: shopMode == 'new' ? pharmacyName.text : null,
+                                isNewShop: shopMode == 'new',
+                              );
+                            } catch (_) {}
                             if (context.mounted) {
-                              showAppNotice(context, S.t('Staff login is ready.', 'Login ya staff iko tayari.'));
+                              final created = shopMode == 'new'
+                                  ? S.t('New pharmacy and admin login are ready.', 'Duka jipya na login ya admin viko tayari.')
+                                  : S.t('Staff login is ready.', 'Login ya staff iko tayari.');
+                              showAppNotice(
+                                context,
+                                mailNote == null ? created : '$created $mailNote',
+                                kind: mailNote == null ? AppNoticeKind.success : AppNoticeKind.error,
+                              );
                             }
                           } catch (error) {
                             if (context.mounted) {
+                              setState(() => creating = false);
                               showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
                             }
                           }
                         }
                             : null,
-                        child: Text(S.t('Create login', 'Tengeneza login')),
+                        child: Text(creating ? S.t('Creating…', 'Inatengeneza…') : S.t('Create login', 'Tengeneza login')),
                       ),
                     ],
                   ),
@@ -221,6 +393,8 @@ Future<void> showCreateStaffDialog(
   confirmPassword.dispose();
   phone.dispose();
   employeeCode.dispose();
+  pharmacyName.dispose();
+  pharmacySearch.dispose();
 }
 
 Future<void> showEditStaffDialog(
@@ -271,7 +445,17 @@ Future<void> showEditStaffDialog(
                           const SizedBox(height: 10),
                           TextField(controller: email, decoration: InputDecoration(labelText: S.t('Email', 'Email'))),
                           const SizedBox(height: 10),
-                          TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: S.t('Phone (optional)', 'Simu (si lazima)'))),
+                          TextField(
+                            controller: phone,
+                            keyboardType: TextInputType.phone,
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: S.t('Phone (optional)', 'Simu (si lazima)'),
+                              hintText: TanzaniaPhone.hint,
+                              helperText: S.t('Tanzania mobile, e.g. 0712345678', 'Simu ya Tanzania, mfano 0712345678'),
+                              errorText: TanzaniaPhone.validate(phone.text),
+                            ),
+                          ),
                           const SizedBox(height: 10),
                           TextField(controller: employeeCode, decoration: InputDecoration(labelText: S.t('Staff code (optional)', 'Namba ya staff (si lazima)'))),
                           if (canManageSuperAdmin) ...[
@@ -376,13 +560,14 @@ Future<void> showEditStaffDialog(
                       TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
                       const SizedBox(width: 10),
                       FilledButton.icon(
-                        onPressed: () async {
+                        onPressed: TanzaniaPhone.validate(phone.text) == null
+                            ? () async {
                           try {
                             await service.updateProfileDetails(
                               userId: user.id,
                               displayName: name.text,
                               email: email.text,
-                              phone: phone.text,
+                              phone: TanzaniaPhone.normalize(phone.text),
                               employeeCode: employeeCode.text,
                               role: role == 'super_admin' ? user.role : role,
                               permissions: role == 'admin' ? AppPermissions.resolvedPermissions('admin') : permissions,
@@ -398,7 +583,8 @@ Future<void> showEditStaffDialog(
                               showAppNotice(dialogContext, friendlyActionError(error), kind: AppNoticeKind.error);
                             }
                           }
-                        },
+                        }
+                            : null,
                         icon: const Icon(Icons.save_outlined, size: 18),
                         label: Text(S.t('Save user', 'Hifadhi mtumiaji')),
                       ),
@@ -448,7 +634,8 @@ Future<void> showEditShopDialog(BuildContext context, PharmacyRecord shop) async
   try {
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setState) => AlertDialog(
         title: Text(S.t('Edit shop', 'Hariri duka')),
         content: SizedBox(
           width: 480,
@@ -459,7 +646,17 @@ Future<void> showEditShopDialog(BuildContext context, PharmacyRecord shop) async
               const SizedBox(height: 10),
               TextField(controller: ownerEmail, decoration: InputDecoration(labelText: S.t('Owner email', 'Email ya mmiliki'))),
               const SizedBox(height: 10),
-              TextField(controller: phone, decoration: InputDecoration(labelText: S.t('Phone', 'Simu'))),
+              TextField(
+                controller: phone,
+                keyboardType: TextInputType.phone,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: S.t('Phone', 'Simu'),
+                  hintText: TanzaniaPhone.hint,
+                  helperText: S.t('Tanzania mobile, e.g. 0712345678', 'Simu ya Tanzania, mfano 0712345678'),
+                  errorText: TanzaniaPhone.validate(phone.text),
+                ),
+              ),
               const SizedBox(height: 10),
               TextField(controller: address, decoration: InputDecoration(labelText: S.t('Address', 'Anwani'))),
               const SizedBox(height: 10),
@@ -470,12 +667,13 @@ Future<void> showEditShopDialog(BuildContext context, PharmacyRecord shop) async
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
           FilledButton(
-            onPressed: () async {
+            onPressed: TanzaniaPhone.validate(phone.text) == null
+                ? () async {
               try {
                 await PharmacyService().updatePharmacyProfile(
                   pharmacyId: shop.id,
                   name: name.text,
-                  phone: phone.text,
+                  phone: TanzaniaPhone.normalize(phone.text),
                   address: address.text,
                   note: note.text,
                   ownerEmail: ownerEmail.text,
@@ -486,11 +684,13 @@ Future<void> showEditShopDialog(BuildContext context, PharmacyRecord shop) async
                   ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('$error')));
                 }
               }
-            },
+            }
+                : null,
             child: Text(S.t('Save shop', 'Hifadhi duka')),
           ),
         ],
       ),
+        ),
     );
   } finally {
     name.dispose();
@@ -498,5 +698,50 @@ Future<void> showEditShopDialog(BuildContext context, PharmacyRecord shop) async
     address.dispose();
     note.dispose();
     ownerEmail.dispose();
+  }
+}
+
+class _ShopModeCard extends StatelessWidget {
+  const _ShopModeCard({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color(0xffe7f6f1) : const Color(0xfff7fbfa),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: selected ? const Color(0xff0f766e) : const Color(0xffd7e7e4), width: selected ? 1.6 : 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: const Color(0xff0f766e)),
+              const SizedBox(height: 8),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xff183b3b))),
+              const SizedBox(height: 4),
+              Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xff68807d), height: 1.3)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

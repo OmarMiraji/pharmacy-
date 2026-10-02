@@ -303,6 +303,22 @@ class SubscriptionService {
     });
   }
 
+  /// Removes a token from your list only. Does not lock or change a shop that already activated.
+  Future<void> deleteActivationToken(String code) async {
+    final id = _normalizeCode(code);
+    if (id.isEmpty) return;
+    await _firestore.collection(FirestoreCollections.subscriptionCodes).doc(id).delete();
+  }
+
+  Future<int> deleteUnusedActivationTokens() async {
+    final snapshot = await _firestore.collection(FirestoreCollections.subscriptionCodes).get();
+    final unused = snapshot.docs.where((doc) => doc.data()['isUsed'] != true).toList();
+    for (final doc in unused) {
+      await doc.reference.delete();
+    }
+    return unused.length;
+  }
+
   Future<void> grantLicense({
     required String pharmacyId,
     required String plan,

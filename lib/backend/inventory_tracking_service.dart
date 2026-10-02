@@ -97,12 +97,14 @@ class InventoryTrackingService {
     final end = StockLedger.endOfDay(day);
     return TenantContext.instance
         .scoped(_firestore.collection(FirestoreCollections.stockMovements))
-        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-        .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end))
         .snapshots()
         .asyncMap((snapshot) async {
+      final docs = snapshot.docs.where((doc) {
+        final createdAt = _readDate(doc.data()['createdAt']);
+        return createdAt != null && !createdAt.isBefore(start) && !createdAt.isAfter(end);
+      }).toList();
       final saleUnits = await _saleUnitsByMedicine(start, end);
-      return _build(day, medicines, snapshot.docs, saleUnits);
+      return _build(day, medicines, docs, saleUnits);
     });
   }
 
@@ -112,17 +114,7 @@ class InventoryTrackingService {
   }) async {
     final start = StockLedger.startOfDay(day);
     final end = StockLedger.endOfDay(day);
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
-    try {
-      final snapshot = await TenantContext.instance
-          .scoped(_firestore.collection(FirestoreCollections.stockMovements))
-          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end))
-          .get();
-      docs = snapshot.docs;
-    } catch (_) {
-      docs = await _fallbackMovements(start, end);
-    }
+    final docs = await _fallbackMovements(start, end);
     final saleUnits = await _saleUnitsByMedicine(start, end);
     return _build(day, medicines, docs, saleUnits);
   }

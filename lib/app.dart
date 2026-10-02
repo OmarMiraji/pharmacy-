@@ -27,7 +27,9 @@ import 'backend/user_profile.dart';
 import 'backend/import_service.dart';
 import 'backend/pharmacy_service.dart';
 import 'backend/printer_settings.dart';
+import 'backend/tanzania_phone.dart';
 import 'backend/tenant_context.dart';
+import 'backend/transactional_email_service.dart';
 import 'backend/expiry_priority.dart';
 import 'backend/expiry_stock.dart';
 import 'backend/selling_units.dart';
@@ -1249,11 +1251,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
                           alignment: Alignment.centerLeft,
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 420),
-                            child: Row(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final compact = constraints.maxWidth < 280;
+                                final pie = compact ? 84.0 : 148.0;
+                                return Row(
                               children: [
                                 SizedBox(
-                                  width: 148,
-                                  height: 148,
+                                  width: pie,
+                                  height: pie,
                                   child: CustomPaint(
                                     painter: _StockHealthPainter(
                                       healthyPercent: summary.stockItems > 0 ? (summary.healthyStockCount / summary.stockItems) * 100 : 0,
@@ -1261,7 +1267,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 22),
+                                SizedBox(width: compact ? 10 : 22),
                                 Expanded(
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1274,6 +1280,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
                                   ),
                                 ),
                               ],
+                            );
+                              },
                             ),
                           ),
                         ),
@@ -1555,11 +1563,18 @@ class _LegendRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
-        const SizedBox(width: 8),
-        Text(label, style: const TextStyle(color: Color(0xff68807d), fontSize: 12)),
-        const Spacer(),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0xff68807d), fontSize: 11),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xff183b3b))),
       ],
     );
   }
@@ -2764,7 +2779,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     final phone = TextEditingController();
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) => AlertDialog(
         title: const Text('Add supplier'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2776,25 +2792,35 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
             const SizedBox(height: 10),
             TextField(
               controller: phone,
-              decoration: const InputDecoration(labelText: 'Phone (optional)'),
+              keyboardType: TextInputType.phone,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: S.t('Phone (optional)', 'Simu (si lazima)'),
+                hintText: TanzaniaPhone.hint,
+                helperText: S.t('Tanzania mobile, e.g. 0712345678', 'Simu ya Tanzania, mfano 0712345678'),
+                errorText: TanzaniaPhone.validate(phone.text),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
           FilledButton(
-            onPressed: () async {
+            onPressed: TanzaniaPhone.validate(phone.text) == null
+                ? () async {
               final supplierName = name.text.trim();
               if (supplierName.isEmpty) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Supplier name is required.')));
                 return;
               }
-              await service.createSupplier(name: supplierName, phone: phone.text);
+              await service.createSupplier(name: supplierName, phone: TanzaniaPhone.normalize(phone.text));
               if (dialogContext.mounted) Navigator.pop(dialogContext);
-            },
+            }
+                : null,
             child: const Text('Save supplier'),
           ),
         ],
+      ),
       ),
     );
     name.dispose();
@@ -3317,16 +3343,17 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
 
       final file = result.files.first;
       final selectedName = file.name;
-      final rawBytes = file.bytes;
-      final content = rawBytes != null
-          ? String.fromCharCodes(rawBytes)
-          : await File(file.path!).readAsString();
+      final rawBytes = file.bytes ?? (file.path == null ? null : await File(file.path!).readAsBytes());
+      if (rawBytes == null || rawBytes.isEmpty) {
+        throw StateError('The selected file was empty.');
+      }
 
+      final parsed = MedicineImportService.parseBytes(rawBytes, fileName: selectedName);
       if (!mounted) return;
-      _controller.text = content;
+      _controller.text = parsed.displayText;
       setState(() {
         _selectedFileName = selectedName;
-        _result = MedicineImportService.validateCsv(content);
+        _result = parsed.result;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -5038,6 +5065,16 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
         return;
       }
       setState(() => _message = S.t('Plan activated successfully. Opening pharmacy...', 'Mpango umewezeshwa. Inafungua duka...'));
+      try {
+        final pharmacy = await PharmacyService().getPharmacy(TenantContext.instance.pharmacyId ?? '');
+        await TransactionalEmailService().notifySubscriptionActivated(
+          toEmail: pharmacy?.ownerEmail ?? FirebaseAuth.instance.currentUser?.email ?? '',
+          displayName: pharmacy?.name ?? '',
+          shopName: pharmacy?.name ?? '',
+          plan: pharmacy?.plan ?? 'paid',
+          expiresAt: pharmacy?.expiresAt,
+        );
+      } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 400));
       widget.onActivated?.call();
     } catch (error) {

@@ -108,7 +108,7 @@ exports.createAuthUser = onCall({region: "us-central1"}, async (request) => {
     const user = await admin.auth().createUser({
       email,
       password,
-      emailVerified: false,
+      emailVerified: true,
       disabled: false,
     });
     return {uid: user.uid};
@@ -125,6 +125,86 @@ exports.createAuthUser = onCall({region: "us-central1"}, async (request) => {
     if (error && error.code === "auth/weak-password") {
       throw new HttpsError("invalid-argument", "Password must be at least 6 characters.");
     }
-    throw new HttpsError("internal", "Could not create that login. Try again.");
+  throw new HttpsError("internal", "Could not create that login. Try again.");
   }
 });
+
+exports.recycleAuthUser = onCall({region: "us-central1"}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in first.");
+  }
+  const email = String((request.data && request.data.email) || "").trim().toLowerCase();
+  const password = String((request.data && request.data.password) || "");
+  if (!email || password.length < 6) {
+    throw new HttpsError("invalid-argument", "Email and password are required.");
+  }
+  const caller = await loadCaller(request.auth.uid);
+  const callerRole = String(caller.role || "").trim().toLowerCase();
+  const isSuper = callerIsSuper(caller, request.auth.token);
+  if (!isSuper && callerRole !== "admin") {
+    throw new HttpsError("permission-denied", "You cannot restore that login.");
+  }
+  try {
+    const existing = await admin.auth().getUserByEmail(email);
+    await admin.auth().updateUser(existing.uid, {password, disabled: false, emailVerified: true});
+    return {uid: existing.uid, restored: true};
+  } catch (error) {
+    if (error && error.code === "auth/user-not-found") {
+      const created = await admin.auth().createUser({
+        email,
+        password,
+        emailVerified: true,
+        disabled: false,
+      });
+      return {uid: created.uid, restored: false};
+    }
+    throw new HttpsError("internal", "Could not restore that login.");
+  }
+});
+
+exports.deleteAuthUser = onCall({region: "us-central1"}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in first.");
+  }
+  const uid = String((request.data && request.data.uid) || "").trim();
+  if (!uid) {
+    throw new HttpsError("invalid-argument", "User is required.");
+  }
+  if (uid === request.auth.uid) {
+    throw new HttpsError("failed-precondition", "You cannot delete your own login here.");
+  }
+  const caller = await loadCaller(request.auth.uid);
+  const callerRole = String(caller.role || "").trim().toLowerCase();
+  const isSuper = callerIsSuper(caller, request.auth.token);
+  if (!isSuper && callerRole !== "admin") {
+    throw new HttpsError("permission-denied", "You cannot delete that login.");
+  }
+  try {
+    await admin.auth().deleteUser(uid);
+  } catch (error) {
+    if (!error || error.code !== "auth/user-not-found") {
+      throw new HttpsError("internal", "Could not delete that Firebase login.");
+    }
+  }
+  return {ok: true};
+});
+
+const {onDocumentDeleted} = require("firebase-functions/v2/firestore");
+exports.onUserProfileDeleted = onDocumentDeleted(
+    {document: "users/{userId}", region: "us-central1"},
+    async (event) => {
+      const uid = event.params.userId;
+      try {
+        await admin.auth().deleteUser(uid);
+      } catch (error) {
+        if (!error || error.code !== "auth/user-not-found") {
+          console.error("Auth delete after profile delete failed", uid, error);
+        }
+      }
+    },
+);
+
+const mailTriggers = require("./mail/triggers");
+exports.onUserCreatedEmail = mailTriggers.onUserCreatedEmail;
+exports.onPharmacyUpdatedEmail = mailTriggers.onPharmacyUpdatedEmail;
+exports.trialEndingReminders = mailTriggers.trialEndingReminders;

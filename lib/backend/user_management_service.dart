@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'auth_account_service.dart';
@@ -212,13 +211,22 @@ class UserManagementService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    await AuthAccountService().rememberAuthUid(email: email.trim(), uid: userId.trim());
   }
 
-  Future<void> deleteProfile(String userId) {
+  Future<void> deleteProfile(String userId) async {
     if (!TenantContext.instance.isSuperAdmin) {
       TenantContext.instance.assertWritable();
     }
-    return _firestore.collection(FirestoreCollections.users).doc(userId).delete();
+    final id = userId.trim();
+    if (id.isEmpty) return;
+    final snap = await _firestore.collection(FirestoreCollections.users).doc(id).get();
+    final email = (snap.data()?['email'] as String? ?? '').trim().toLowerCase();
+    if (email.isNotEmpty) {
+      await AuthAccountService().rememberAuthUid(email: email, uid: id);
+    }
+    await _firestore.collection(FirestoreCollections.users).doc(id).delete();
+    await AuthAccountService().deleteAuthUser(id);
   }
 
   Future<int> deletePharmacyStaff({required String pharmacyId, String? keepUserId}) async {
@@ -250,17 +258,10 @@ class UserManagementService {
       throw StateError('Change your own password from Settings or the lock icon.');
     }
     try {
-      await FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('setUserPassword').call(<String, dynamic>{
-        'uid': userId,
-        'password': next,
-      });
-    } on FirebaseFunctionsException catch (error) {
-      if (error.code == 'not-found' || error.code == 'unavailable' || error.code == 'unimplemented') {
-        throw StateError(
-          'Direct password set needs Cloud Functions (setUserPassword). Use Send reset email until that is deployed.',
-        );
-      }
-      throw StateError(error.message ?? 'Could not set that login password.');
+      await AuthAccountService().setUserPassword(uid: userId, password: next);
+    } catch (error) {
+      final text = '$error'.replaceFirst('Exception: ', '').replaceFirst('Bad state: ', '').trim();
+      throw StateError(text.isEmpty ? 'Could not set that login password.' : text);
     }
   }
 }

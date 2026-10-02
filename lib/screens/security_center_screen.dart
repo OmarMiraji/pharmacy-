@@ -7,6 +7,7 @@ import '../backend/pharmacy_service.dart';
 import '../backend/subscription_service.dart';
 import '../l10n/app_locale.dart';
 import '../theme/brand.dart';
+import '../widgets/outgoing_email_card.dart';
 
 class SecurityCenterScreen extends StatelessWidget {
   const SecurityCenterScreen({super.key});
@@ -31,12 +32,13 @@ class SecurityCenterScreen extends StatelessWidget {
             return ListView(
               children: [
                 Text(S.t('Security center', 'Kituo cha usalama'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
-                const SizedBox(height: 8),
-                Text(
-                  S.t('Firestore rules are the authority for licenses, payments, and audit logs. Shop users cannot verify payments or edit audit records.', 'Sheria za Firestore ndizo mamlaka. Duka haliwezi kuthibitisha malipo wala kuhariri audit.'),
-                  style: const TextStyle(color: Color(0xff68807d), height: 1.45),
-                ),
                 const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+                  child: const OutgoingEmailCard(),
+                ),
+                const SizedBox(height: 24),
                 Wrap(
                   spacing: 12,
                   runSpacing: 12,

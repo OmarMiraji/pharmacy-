@@ -4,6 +4,7 @@ import '../backend/auth_service.dart';
 import '../backend/pharmacy.dart';
 import '../backend/pharmacy_data_service.dart';
 import '../backend/pharmacy_service.dart';
+import '../backend/tanzania_phone.dart';
 import '../backend/tenant_context.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
@@ -120,7 +121,7 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
       await PharmacyService().updatePharmacyProfile(
         pharmacyId: pharmacy.id,
         name: _name.text,
-        phone: _phone.text,
+        phone: TanzaniaPhone.normalize(_phone.text),
         address: _address.text,
         note: _note.text,
       );
@@ -266,13 +267,13 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
                 TextFormField(
                   controller: _phone,
                   enabled: _canManage && !_busy,
-                  decoration: InputDecoration(labelText: S.t('Phone', 'Simu')),
-                  validator: (value) {
-                    final text = value?.trim() ?? '';
-                    if (text.isEmpty) return null;
-                    if (text.length < 9) return 'Enter a valid phone number';
-                    return null;
-                  },
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: S.t('Phone', 'Simu'),
+                    hintText: TanzaniaPhone.hint,
+                    helperText: S.t('Tanzania mobile, e.g. 0712345678', 'Simu ya Tanzania, mfano 0712345678'),
+                  ),
+                  validator: TanzaniaPhone.validate,
                 ),
                 const SizedBox(height: 10),
                 TextFormField(

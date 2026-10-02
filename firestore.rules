@@ -497,10 +497,13 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
-    match /announcements/{announcementId} {
-      allow read: if signedIn();
-      allow create, update: if isSuperAdmin();
-      allow delete: if isSuperAdmin();
+    match /mail_settings/{docId} {
+      allow read: if isSuperAdmin() || firestoreRole() == 'admin';
+      allow write: if isSuperAdmin();
+    }
+
+    match /auth_index/{id} {
+      allow read, write: if isSuperAdmin() || firestoreRole() == 'admin';
     }
   }
 }

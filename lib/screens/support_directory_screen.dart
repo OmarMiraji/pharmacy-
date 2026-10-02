@@ -9,6 +9,7 @@ import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
 import '../l10n/app_locale.dart';
 import '../theme/brand.dart';
+import '../widgets/outgoing_email_card.dart';
 import 'accounts_admin_screen.dart';
 import 'password_security.dart';
 import 'staff_account_dialogs.dart';
@@ -322,6 +323,12 @@ class _UsersPane extends StatelessWidget {
                   hintText: S.t('Search name, email, or shop', 'Tafuta jina, email, au duka'),
                 ),
               ),
+            ),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: () => OutgoingEmailCard.showDialogBox(context),
+              icon: const Icon(Icons.mark_email_unread_outlined),
+              label: Text(S.t('Email settings', 'Mipangilio ya email')),
             ),
             const SizedBox(width: 10),
             FilledButton.icon(

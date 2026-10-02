@@ -19,4 +19,5 @@ abstract final class FirestoreCollections {
   static const auditLogs = 'audit_logs';
   static const licensePayments = 'license_payments';
   static const announcements = 'announcements';
+  static const mailSettings = 'mail_settings';
 }
