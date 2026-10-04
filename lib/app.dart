@@ -2149,30 +2149,31 @@ class _SalesScreenState extends State<SalesScreen> {
       }
     }
     if (medicine == null) return;
-    final picked = await _askSellQuantity(medicine);
+    final selected = medicine;
+    final picked = await _askSellQuantity(selected);
     if (picked == null || !mounted) return;
     final unit = picked.$1;
     final sellQty = picked.$2;
-    final available = _sellableByMedicine[medicine.id] ?? medicine.quantityOnHand;
-    final reservedOthers = _reservedBase(medicine.id) - item.baseQuantity;
+    final available = _sellableByMedicine[selected.id] ?? selected.quantityOnHand;
+    final reservedOthers = _reservedBase(selected.id) - item.baseQuantity;
     if (reservedOthers + (sellQty * unit.toBase) > available) {
       setState(() => _message = S.t(
-            'Only ${medicine.stockLabel(available)} available.',
-            'Zimebaki ${medicine.stockLabel(available)} tu.',
+            'Only ${selected.stockLabel(available)} available.',
+            'Zimebaki ${selected.stockLabel(available)} tu.',
           ));
       return;
     }
     setState(() {
       _cart.remove(item.lineKey);
-      _cart['${medicine.id}:${unit.id}'] = SaleCartItem(
-        medicineId: medicine.id,
-        medicineName: medicine.name,
+      _cart['${selected.id}:${unit.id}'] = SaleCartItem(
+        medicineId: selected.id,
+        medicineName: selected.name,
         quantity: sellQty,
         unitPriceMinor: unit.unitPriceMinor,
         unitName: unit.label,
         toBase: unit.toBase,
         sellUnitId: unit.id,
-        baseLabel: medicine.baseLabel,
+        baseLabel: selected.baseLabel,
       );
       _message = null;
     });
@@ -4093,7 +4094,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                       prefixIcon: const Icon(Icons.search_rounded),
                       suffixIcon: query.isEmpty
                           ? null
-                          : IconButton(onPressed: () => setState(_search.clear), icon: const Icon(Icons.close_rounded)),
+                          : IconButton(
+                              onPressed: () => setState(() => _search.clear()),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -5384,7 +5388,7 @@ class _ExpiryDateFields extends StatelessWidget {
     final year = value?.year ?? now.year + 1;
     final month = value?.month ?? now.month;
     final daysInMonth = DateTime(year, month + 1, 0).day;
-    final day = (value?.day ?? now.day).clamp(1, daysInMonth);
+    final day = (value?.day ?? now.day).clamp(1, daysInMonth).toInt();
     final startYear = allowPast ? now.year - 5 : now.year;
     final years = [for (var y = startYear; y <= now.year + 15; y++) y];
 
@@ -5392,7 +5396,7 @@ class _ExpiryDateFields extends StatelessWidget {
       final y = nextYear ?? year;
       final m = nextMonth ?? month;
       final maxDay = DateTime(y, m + 1, 0).day;
-      final d = (nextDay ?? day).clamp(1, maxDay);
+      final d = (nextDay ?? day).clamp(1, maxDay).toInt();
       onChanged(DateTime(y, m, d));
     }
 
