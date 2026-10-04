@@ -202,6 +202,37 @@ class MedicineService {
     }));
   }
 
+  Future<void> updateCategory({required String categoryId, required String name}) async {
+    _tenant.assertWritable();
+    final trimmedName = name.trim();
+    if (categoryId.trim().isEmpty || trimmedName.isEmpty) {
+      throw ArgumentError('Category name is required.');
+    }
+    await _categories.doc(categoryId.trim()).update({
+      'name': trimmedName,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteCategory(String categoryId) async {
+    _tenant.assertWritable();
+    final id = categoryId.trim();
+    if (id.isEmpty) throw ArgumentError('Category is required.');
+    final used = await _tenant
+        .scoped(_medicines)
+        .where('categoryId', isEqualTo: id)
+        .where('isActive', isEqualTo: true)
+        .limit(1)
+        .get();
+    if (used.docs.isNotEmpty) {
+      throw StateError('This category still has medicines. Move those products first, then delete it.');
+    }
+    await _categories.doc(id).update({
+      'isActive': false,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<String> findOrCreateCategoryId(String name) async {
     _tenant.assertWritable();
     final trimmedName = name.trim();
@@ -574,7 +605,12 @@ class MedicineService {
           'batchNumber': code.isEmpty ? 'OPEN-${sku.trim().toUpperCase()}' : code,
           'expiryDate': Timestamp.fromDate(expiryDate),
           'quantityOnHand': stockQty,
-          'unitCostMinor': purchasePriceMinor,
+          'unitCostMinor': BaseUnits.costPerStockUnit(
+            unit: unit,
+            purchasePriceMinor: purchasePriceMinor,
+            packSize: size,
+            minSaleQty: minSaleQty,
+          ),
           'isActive': true,
           'createdAt': now,
           'updatedAt': now,
@@ -796,6 +832,145 @@ class MedicineService {
     } on FirebaseException catch (error) {
       if (error.code != 'permission-denied') rethrow;
     }
+  }
+
+  Future<void> setOnHandQuantity({
+    required String medicineId,
+    required int quantity,
+    required String createdBy,
+    DateTime? expiryDate,
+    String? batchNumber,
+  }) async {
+    _tenant.assertWritable();
+    if (medicineId.trim().isEmpty) throw ArgumentError('Medicine is required.');
+    if (quantity < 0) throw ArgumentError('Stock cannot be negative.');
+
+    final medicineRef = _medicines.doc(medicineId);
+    final medicineSnap = await medicineRef.get();
+    if (!medicineSnap.exists) throw StateError('The medicine was not found.');
+    final medicineData = medicineSnap.data() ?? const <String, dynamic>{};
+    final current = (medicineData['quantityOnHand'] as num?)?.toInt() ?? 0;
+    if (current == quantity) return;
+
+    final batches = await _tenant.scoped(_batches).where('medicineId', isEqualTo: medicineId).get();
+    final live = batches.docs.where((doc) {
+      final qty = (doc.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+      return doc.data()['isActive'] != false && qty > 0;
+    }).toList()
+      ..sort((a, b) {
+        final left = ExpiryPriority.parseAny(a.data()['expiryDate']) ?? DateTime(9999);
+        final right = ExpiryPriority.parseAny(b.data()['expiryDate']) ?? DateTime(9999);
+        return left.compareTo(right);
+      });
+
+    final delta = quantity - current;
+    final movementRef = _firestore.collection(FirestoreCollections.stockMovements).doc();
+    final now = FieldValue.serverTimestamp();
+    final sku = (medicineData['sku'] as String? ?? 'STOCK').trim().toUpperCase();
+    final name = (medicineData['name'] as String? ?? '').trim();
+    final expiry = expiryDate ?? ExpiryPriority.parseAny(medicineData['expiryDate']);
+
+    await _firestore.runTransaction((transaction) async {
+      transaction.update(medicineRef, {
+        'quantityOnHand': quantity,
+        if (expiry != null) 'expiryDate': Timestamp.fromDate(expiry),
+        'updatedAt': now,
+      });
+
+      var leftover = delta;
+      String? usedBatchId;
+      String? usedBatchNumber;
+      if (live.isEmpty && quantity > 0) {
+        final batchRef = _batches.doc();
+        final code = (batchNumber ?? '').trim();
+        usedBatchId = batchRef.id;
+        usedBatchNumber = code.isEmpty ? 'STOCK-$sku' : code;
+        transaction.set(batchRef, _tenant.withTenant({
+          'medicineId': medicineId,
+          'batchNumber': usedBatchNumber,
+          'expiryDate': Timestamp.fromDate(expiry ?? DateTime.now().add(const Duration(days: 365))),
+          'quantityOnHand': quantity,
+          'unitCostMinor': BaseUnits.costPerStockUnit(
+            unit: medicineData['unit'] as String? ?? 'Tablet',
+            purchasePriceMinor: (medicineData['purchasePriceMinor'] as num?)?.toInt() ?? 0,
+            packSize: (medicineData['packSize'] as num?)?.toInt() ?? 1,
+            minSaleQty: (medicineData['minSaleQty'] as num?)?.toInt() ?? 0,
+          ),
+          'isActive': true,
+          'createdAt': now,
+          'updatedAt': now,
+        }));
+      } else if (live.length == 1) {
+        final doc = live.first;
+        usedBatchId = doc.id;
+        usedBatchNumber = (doc.data()['batchNumber'] as String?) ?? '';
+        transaction.update(doc.reference, {
+          'quantityOnHand': quantity,
+          if (expiry != null) 'expiryDate': Timestamp.fromDate(expiry),
+          'isActive': quantity > 0,
+          'updatedAt': now,
+        });
+        leftover = 0;
+      } else {
+        for (final doc in live) {
+          if (leftover == 0) break;
+          final qty = (doc.data()['quantityOnHand'] as num?)?.toInt() ?? 0;
+          usedBatchId ??= doc.id;
+          usedBatchNumber ??= (doc.data()['batchNumber'] as String?) ?? '';
+          if (leftover > 0) {
+            transaction.update(doc.reference, {
+              'quantityOnHand': qty + leftover,
+              if (expiry != null) 'expiryDate': Timestamp.fromDate(expiry),
+              'updatedAt': now,
+            });
+            leftover = 0;
+          } else {
+            final take = qty < -leftover ? qty : -leftover;
+            transaction.update(doc.reference, {
+              'quantityOnHand': qty - take,
+              'isActive': qty - take > 0,
+              'updatedAt': now,
+            });
+            leftover += take;
+          }
+        }
+        if (leftover > 0) {
+          final batchRef = _batches.doc();
+          final code = (batchNumber ?? '').trim();
+          usedBatchId = batchRef.id;
+          usedBatchNumber = code.isEmpty ? 'STOCK-$sku' : code;
+          transaction.set(batchRef, _tenant.withTenant({
+            'medicineId': medicineId,
+            'batchNumber': usedBatchNumber,
+            'expiryDate': Timestamp.fromDate(expiry ?? DateTime.now().add(const Duration(days: 365))),
+            'quantityOnHand': leftover,
+            'unitCostMinor': BaseUnits.costPerStockUnit(
+            unit: medicineData['unit'] as String? ?? 'Tablet',
+            purchasePriceMinor: (medicineData['purchasePriceMinor'] as num?)?.toInt() ?? 0,
+            packSize: (medicineData['packSize'] as num?)?.toInt() ?? 1,
+            minSaleQty: (medicineData['minSaleQty'] as num?)?.toInt() ?? 0,
+          ),
+            'isActive': true,
+            'createdAt': now,
+            'updatedAt': now,
+          }));
+        }
+      }
+
+      transaction.set(
+        movementRef,
+        StockLedger.movement(
+          medicineId: medicineId,
+          medicineName: name,
+          type: 'adjustment',
+          quantityChange: delta,
+          createdBy: createdBy,
+          batchId: usedBatchId,
+          batchNumber: usedBatchNumber,
+          createdAt: now,
+        ),
+      );
+    });
   }
 
   Future<void> _convertPackStockToTablets(String medicineId, int packSize) async {

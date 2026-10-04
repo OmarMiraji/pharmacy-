@@ -38,6 +38,10 @@ class SaleCartItem {
   int get totalMinor => quantity * unitPriceMinor;
 
   String get receiptCaption {
+    if (sellUnitId == 'lot' && toBase > 1) {
+      final tablets = quantity * toBase;
+      return '$tablets $baseLabel${tablets == 1 ? '' : 's'} ($quantity × $toBase)';
+    }
     final unitWord = quantity == 1 ? unitName : (unitName.toLowerCase() == 'box' ? 'Boxes' : '${unitName}s');
     if (sellUnitId == 'base' || toBase <= 1) return '$quantity $unitWord';
     return '$quantity $unitWord ($toBase $baseLabel${toBase == 1 ? '' : 's'})';

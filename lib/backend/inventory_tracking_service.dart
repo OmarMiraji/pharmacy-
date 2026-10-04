@@ -199,6 +199,12 @@ class InventoryTrackingService {
       } else if (type == 'sale_void') {
         outBy[medicineId] = ((outBy[medicineId] ?? 0) - units).clamp(0, 1 << 30);
         saleBy[medicineId] = ((saleBy[medicineId] ?? 0) - units).clamp(0, 1 << 30);
+      } else if (type == 'adjustment') {
+        if (change < 0 || direction == 'out') {
+          outBy[medicineId] = (outBy[medicineId] ?? 0) + units;
+        } else {
+          inBy[medicineId] = (inBy[medicineId] ?? 0) + units;
+        }
       } else {
         inBy[medicineId] = (inBy[medicineId] ?? 0) + (change.abs() > 0 ? change.abs() : units);
       }

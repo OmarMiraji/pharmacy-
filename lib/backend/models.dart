@@ -67,18 +67,31 @@ class Medicine {
 
   int get effectiveMinSaleQty {
     if (!canSellPiecesByType) return 1;
-    if (minSaleQty > 0) return minSaleQty;
+    if (minSaleQty > 1) return minSaleQty;
     return 5;
   }
 
+  bool get sellsPricedLots => canSellPiecesByType && piecesPerPack <= 1 && effectiveMinSaleQty > 1;
+
+  int get saleLotSize => sellsPricedLots ? effectiveMinSaleQty : 1;
+
   int minSellCountFor(SellUnit unit, int availableBase) {
-    if (unit.toBase != 1) return 1;
+    if (unit.id == 'lot' || unit.toBase > 1) return 1;
     final min = effectiveMinSaleQty;
     if (availableBase > 0 && availableBase < min) return availableBase;
     return min;
   }
 
+  int priceForTablets(int tablets) {
+    if (tablets <= 0) return 0;
+    if (!sellsPricedLots) return tablets * piecePriceMinor;
+    return ((sellingPriceMinor * tablets) / saleLotSize).round();
+  }
+
   int get piecePriceMinor {
+    if (sellsPricedLots) {
+      return (sellingPriceMinor / saleLotSize).round().clamp(0, sellingPriceMinor);
+    }
     if (piecesPerPack <= 1) return sellingPriceMinor;
     return (sellingPriceMinor / piecesPerPack).round().clamp(0, sellingPriceMinor);
   }
@@ -86,6 +99,18 @@ class Medicine {
   List<SellUnit> get sellUnits {
     final units = <SellUnit>[];
     final piece = piecePriceMinor;
+    if (sellsPricedLots) {
+      units.add(
+        SellUnit(
+          id: 'lot',
+          label: '$saleLotSize $baseLabel',
+          toBase: saleLotSize,
+          unitPriceMinor: sellingPriceMinor,
+          baseLabel: baseLabel,
+        ),
+      );
+      return units;
+    }
     units.add(
       SellUnit(
         id: 'base',

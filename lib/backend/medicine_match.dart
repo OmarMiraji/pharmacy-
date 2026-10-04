@@ -9,6 +9,14 @@ class MedicineMatch {
         .replaceAll(RegExp(r'\s+'), ' ');
   }
 
+  static bool matches(Medicine medicine, String query) {
+    final wanted = query.trim().toLowerCase();
+    if (wanted.isEmpty) return true;
+    return medicine.name.toLowerCase().contains(wanted) ||
+        medicine.sku.toLowerCase().contains(wanted) ||
+        (medicine.genericName ?? '').toLowerCase().contains(wanted);
+  }
+
   static Medicine? findIn(Iterable<Medicine> medicines, String name) {
     final wanted = key(name);
     if (wanted.isEmpty) return null;

@@ -20,6 +20,10 @@ class SellUnit {
   }
 
   String receiptCaption(int sellQty) {
+    if (id == 'lot' && toBase > 1) {
+      final tablets = sellQty * toBase;
+      return '$tablets $baseLabel${tablets == 1 ? '' : 's'} ($sellQty × $toBase)';
+    }
     final unitWord = sellQty == 1 ? label : pluralLabel;
     if (id == 'base' || toBase <= 1) {
       return '$sellQty $unitWord';
@@ -44,6 +48,22 @@ abstract final class BaseUnits {
   static bool sellsByPiece(String unit) {
     final value = normalize(unit);
     return value == 'Tablet' || value == 'Capsule';
+  }
+
+  static int costPerStockUnit({
+    required String unit,
+    required int purchasePriceMinor,
+    int packSize = 1,
+    int minSaleQty = 0,
+  }) {
+    if (purchasePriceMinor <= 0) return 0;
+    final size = packSize < 1 ? 1 : packSize;
+    if (sellsByPiece(unit) && size <= 1) {
+      final lot = minSaleQty > 1 ? minSaleQty : 5;
+      return (purchasePriceMinor / lot).round();
+    }
+    if (size > 1) return (purchasePriceMinor / size).round();
+    return purchasePriceMinor;
   }
 
   static String normalize(String raw) {
