@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
@@ -13,6 +14,7 @@ import 'backend/app_update_service.dart';
 import 'backend/auth_service.dart';
 import 'backend/firestore_collections.dart';
 import 'backend/inventory_service.dart';
+import 'backend/login_log_service.dart';
 import 'backend/medicine_service.dart';
 import 'backend/medicine_match.dart';
 import 'backend/models.dart';
@@ -21,6 +23,7 @@ import 'backend/purchase_service.dart';
 import 'backend/sales_service.dart';
 import 'backend/receipt_service.dart';
 import 'backend/permissions.dart';
+import 'backend/pharmacy.dart';
 import 'backend/subscription_service.dart';
 import 'backend/user_management_service.dart';
 import 'backend/user_profile.dart';
@@ -47,6 +50,7 @@ import 'screens/accounts_admin_screen.dart';
 import 'screens/password_security.dart';
 import 'screens/staff_account_dialogs.dart';
 import 'screens/chat_assistant_panel.dart';
+import 'screens/login_logs_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/inventory_screen.dart';
@@ -99,20 +103,92 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: _authService.authStateChanges,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Color(0xFF073B3A),
-            body: Center(
-              child: CircularProgressIndicator(color: Color(0xFF5EEAD4)),
+    return ListenableBuilder(
+      listenable: AuthSignals.instance,
+      builder: (context, _) {
+        return StreamBuilder<User?>(
+          stream: _authService.authStateChanges,
+          builder: (context, snapshot) {
+            final user = _authService.currentUser;
+            if (user == null && snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                backgroundColor: Color(0xFF073B3A),
+                body: Center(
+                  child: CircularProgressIndicator(color: Color(0xFF5EEAD4)),
+                ),
+              );
+            }
+            if (user == null) return const LoginScreen();
+            return ProfileLoader(authService: _authService, userId: user.uid);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _OpeningShopScreen extends StatelessWidget {
+  const _OpeningShopScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AppLocale.instance,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: PhyimacyBrand.cream,
+          body: Center(
+            child: Container(
+              width: 420,
+              padding: const EdgeInsets.fromLTRB(36, 40, 36, 36),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: const [BoxShadow(color: Color(0x14073B3A), blurRadius: 28, offset: Offset(0, 16))],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 84,
+                    height: 84,
+                    decoration: BoxDecoration(
+                      color: PhyimacyBrand.cream,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: PhyimacyBrand.line),
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    child: Image.asset(PhyimacyBrand.logoAsset, fit: BoxFit.contain),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('PharmSpecio', style: GoogleFonts.playfairDisplay(fontSize: 28, fontWeight: FontWeight.w700, color: PhyimacyBrand.forest)),
+                  const SizedBox(height: 6),
+                  Text(
+                    S.t('Pharmacy management', 'Usimamizi wa duka la dawa'),
+                    style: GoogleFonts.inter(fontSize: 12, letterSpacing: 0.4, color: PhyimacyBrand.muted, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 28),
+                  const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2.4, color: PhyimacyBrand.teal),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    S.t('Opening your shop', 'Inafungua duka'),
+                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    S.t('Preparing the counter, stock, and today\'s sales.', 'Inaandaa kaunta, stock, na mauzo ya leo.'),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: PhyimacyBrand.muted),
+                  ),
+                ],
+              ),
             ),
-          );
-        }
-        final user = snapshot.data;
-        if (user == null) return const LoginScreen();
-        return ProfileLoader(authService: _authService, userId: user.uid);
+          ),
+        );
       },
     );
   }
@@ -167,6 +243,9 @@ class _ProfileLoaderState extends State<ProfileLoader> {
         onTimeout: () => throw TimeoutException('timed-out'),
       );
       AuthService.workspaceError = null;
+      try {
+        await LoginLogService().recordLogin(profile);
+      } catch (_) {}
       return _LoadedWorkspace(
         profile: profile,
         license: session.license,
@@ -205,19 +284,7 @@ class _ProfileLoaderState extends State<ProfileLoader> {
       future: _workspaceFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Color(0xFFF7F4EC),
-            body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Color(0xFF0F766E)),
-                  SizedBox(height: 16),
-                  Text('Opening your shopâ€¦'),
-                ],
-              ),
-            ),
-          );
+          return const _OpeningShopScreen();
         }
         if (snapshot.hasError) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -1680,9 +1747,32 @@ class SalesScreen extends StatefulWidget {
 class _SalesScreenState extends State<SalesScreen> {
   final _searchController = TextEditingController();
   final _discountController = TextEditingController(text: '0');
+  bool _saleFromEnter = false;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onSaleEnter);
+  }
+
+  bool _onSaleEnter(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final key = event.logicalKey;
+    if (key != LogicalKeyboardKey.enter && key != LogicalKeyboardKey.numpadEnter) return false;
+    if (!mounted || _cart.isEmpty || _checkingOut || _saleFromEnter) return false;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+    _saleFromEnter = true;
+    final subtotal = _cart.values.fold<int>(0, (total, item) => total + item.totalMinor);
+    final discount = int.tryParse(_discountController.text) ?? 0;
+    final total = (subtotal - discount).clamp(0, subtotal);
+    _checkout(total, discount).whenComplete(() {
+      _saleFromEnter = false;
+    });
+    return true;
+  }
   final _authService = AuthService();
   final _cart = <String, SaleCartItem>{};
-  final PrinterSettings _printerSettings = PrinterSettingsStore.instance.current;
   String _paymentMethod = 'cash';
   bool _checkingOut = false;
   String? _message;
@@ -1691,14 +1781,35 @@ class _SalesScreenState extends State<SalesScreen> {
   List<Medicine> _latestMedicines = const [];
   Map<String, int> _sellableByMedicine = {};
 
+  Future<ReceiptShop> _receiptShop(String cashier) async {
+    final id = TenantContext.instance.pharmacyId?.trim() ?? '';
+    PharmacyRecord? shop;
+    if (id.isNotEmpty) {
+      try {
+        shop = await PharmacyService().getPharmacy(id);
+      } catch (_) {}
+    }
+    final name = (shop?.name ?? TenantContext.instance.pharmacyName ?? '').trim();
+    return ReceiptShop(
+      name: name.isEmpty ? 'PharmSpecio' : name,
+      phone: (shop?.phone ?? '').trim(),
+      address: (shop?.address ?? '').trim(),
+      cashier: cashier,
+    );
+  }
+
   Future<void> _printReceiptNow(ReceiptSummary receipt) async {
-    await ReceiptService().printReceipt(receipt, settings: _printerSettings, context: context);
+    final settings = PrinterSettingsStore.instance.current;
+    final branded = receipt.copyWith(shop: await _receiptShop(receipt.cashierLabel));
+    if (!mounted) return;
+    await ReceiptService().printReceipt(branded, settings: settings, context: context);
     if (!mounted) return;
     setState(() => _message = 'Receipt ${receipt.receiptNumber} sent to printer.');
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onSaleEnter);
     _searchDebounce?.cancel();
     _searchController.dispose();
     _discountController.dispose();
@@ -1843,9 +1954,12 @@ class _SalesScreenState extends State<SalesScreen> {
         ? (available >= medicine.saleLotSize ? medicine.saleLotSize : (available > 0 ? available : medicine.saleLotSize))
         : medicine.minSellCountFor(selected, available);
     final qty = TextEditingController(text: '$startQty');
+    var popped = false;
     return showDialog<(SellUnit, int)>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext) => _QtyFieldOwner(
+        controller: qty,
+        child: StatefulBuilder(
         builder: (context, setDialogState) {
           final n = int.tryParse(qty.text.trim()) ?? 0;
           final lots = selected.id == 'lot';
@@ -1853,6 +1967,35 @@ class _SalesScreenState extends State<SalesScreen> {
           final leftoverOk = lots && available > 0 && available < lot && n == available;
           final validLot = lots && ((n >= lot && n % lot == 0 && n <= available) || leftoverOk);
           final lineTotal = lots ? medicine.priceForTablets(n) : n * selected.unitPriceMinor;
+          final canAdd = lots ? validLot : n >= medicine.minSellCountFor(selected, available);
+          void accept((SellUnit, int) value) {
+            if (popped || !dialogContext.mounted) return;
+            popped = true;
+            Navigator.pop(dialogContext, value);
+          }
+
+          void submit() {
+            if (!canAdd) return;
+            if (lots && leftoverOk) {
+              accept((
+                SellUnit(
+                  id: 'lot',
+                  label: '$n ${medicine.baseLabel}',
+                  toBase: n,
+                  unitPriceMinor: lineTotal,
+                  baseLabel: medicine.baseLabel,
+                ),
+                1,
+              ));
+              return;
+            }
+            if (lots) {
+              accept((selected, n ~/ lot));
+              return;
+            }
+            accept((selected, n));
+          }
+
           return AlertDialog(
             title: Text(medicine.name),
             content: SizedBox(
@@ -1958,8 +2101,11 @@ class _SalesScreenState extends State<SalesScreen> {
                       Expanded(
                         child: TextField(
                     controller: qty,
+                    autofocus: true,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => submit(),
                     onChanged: (_) => setDialogState(() {}),
                     decoration: InputDecoration(
                       isDense: true,
@@ -1990,38 +2136,15 @@ class _SalesScreenState extends State<SalesScreen> {
             actions: [
               TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
               FilledButton(
-                onPressed: lots
-                    ? (validLot
-                        ? () {
-                            if (leftoverOk) {
-                              Navigator.pop(
-                                dialogContext,
-                                (
-                                  SellUnit(
-                                    id: 'lot',
-                                    label: '$n ${medicine.baseLabel}',
-                                    toBase: n,
-                                    unitPriceMinor: lineTotal,
-                                    baseLabel: medicine.baseLabel,
-                                  ),
-                                  1,
-                                ),
-                              );
-                              return;
-                            }
-                            Navigator.pop(dialogContext, (selected, n ~/ lot));
-                          }
-                        : null)
-                    : (n < medicine.minSellCountFor(selected, available)
-                        ? null
-                        : () => Navigator.pop(dialogContext, (selected, n))),
+                onPressed: canAdd ? submit : null,
                 child: Text(S.t('Add to cart', 'Weka kwenye cart')),
               ),
             ],
           );
         },
       ),
-    ).whenComplete(qty.dispose);
+      ),
+    );
   }
 
   int _reservedBase(String medicineId) =>
@@ -2232,10 +2355,11 @@ class _SalesScreenState extends State<SalesScreen> {
     }
     setState(() { _checkingOut = true; _message = null; });
     try {
+      final cashier = printedByName(widget.profile);
       final receiptNumber = await OfflineSyncService.instance.completeSale(items: _cart.values.toList(), soldBy: user.uid, paymentMethod: _paymentMethod, discountMinor: appliedDiscount, actor: widget.profile);
       final receipt = ReceiptSummary(
         receiptNumber: receiptNumber,
-        soldBy: user.uid,
+        soldBy: cashier,
         paymentMethod: _paymentMethod,
         subtotalMinor: _cart.values.fold<int>(0, (total, item) => total + item.totalMinor),
         discountMinor: appliedDiscount,
@@ -2244,7 +2368,7 @@ class _SalesScreenState extends State<SalesScreen> {
         items: _cart.values.map((item) => ReceiptLineItem(name: '${item.medicineName} - ${item.receiptCaption}', quantity: item.quantity, unitPriceMinor: item.unitPriceMinor, totalMinor: item.totalMinor)).toList(),
       );
       if (mounted) {
-        if (_printerSettings.autoPrintAfterSale) {
+        if (PrinterSettingsStore.instance.current.autoPrintAfterSale) {
           await _printReceiptNow(receipt);
         }
         setState(() {
@@ -2752,6 +2876,10 @@ class _CartPanel extends StatelessWidget {
                   child: TextField(
                     controller: discountController,
                     keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      if (cart.isNotEmpty && !checkingOut) onCheckout();
+                    },
                     onChanged: (_) => onDiscountChanged(),
                     decoration: InputDecoration(isDense: true, labelText: S.t('Discount', 'Punguzo'), prefixIcon: const Icon(Icons.local_offer_outlined, size: 18)),
                   ),
@@ -2803,6 +2931,27 @@ class _CartPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QtyFieldOwner extends StatefulWidget {
+  const _QtyFieldOwner({required this.controller, required this.child});
+
+  final TextEditingController controller;
+  final Widget child;
+
+  @override
+  State<_QtyFieldOwner> createState() => _QtyFieldOwnerState();
+}
+
+class _QtyFieldOwnerState extends State<_QtyFieldOwner> {
+  @override
+  void dispose() {
+    widget.controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _QtyButton extends StatelessWidget {
@@ -3063,6 +3212,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (widget.profile.can('users.manage')) {
         cards.add(_SettingCardOption(id: 'team', label: S.t('Team', 'Timu'), icon: Icons.manage_accounts_outlined, description: S.t('Staff logins for this pharmacy', 'Login za staff wa duka hili')));
       }
+      if (widget.profile.role == 'admin' || widget.profile.can('users.manage')) {
+        cards.add(_SettingCardOption(id: 'attendance', label: S.t('Sign-in times', 'Muda wa kuingia'), icon: Icons.schedule_rounded, description: S.t('When staff signed in and out', 'Staff walipoingia na kutoka')));
+      }
       cards.add(_SettingCardOption(id: 'shop', label: S.t('Shop', 'Duka'), icon: Icons.tune_rounded, description: S.t('This pharmacy name, phone, and address', 'Jina, simu, na anwani ya duka')));
       if (widget.profile.can('settings.manage')) {
         cards.add(_SettingCardOption(id: 'printer', label: S.t('Printer', 'Printa'), icon: Icons.print_outlined, description: S.t('Receipt printer', 'Printa ya risiti')));
@@ -3075,6 +3227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final selectedContent = switch (_selected) {
       'printer' => const PrinterSettingsScreen(),
       'team' => TeamAccessScreen(profile: widget.profile),
+      'attendance' => LoginLogsScreen(pharmacyId: widget.profile.pharmacyId),
       'pharmacies' => AccountsAdminScreen(profile: widget.profile),
       'licenses' => SubscriptionAdminScreen(profile: widget.profile),
       'updates' => AppUpdateScreen(profile: widget.profile),
@@ -3121,7 +3274,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Text(
                         widget.profile.isSuperAdmin
                             ? S.t('Shops, licenses, password, and app updates.', 'Maduka, leseni, nenosiri, na updates.')
-                            : S.t('Shop details, team, printer, data, password, and updates.', 'Taarifa za duka, timu, printa, data, nenosiri, na updates.'),
+                            : S.t('Shop details, team, sign-in times, printer, data, password, and updates.', 'Taarifa za duka, timu, muda wa kuingia, printa, data, nenosiri, na updates.'),
                         style: GoogleFonts.inter(color: PhyimacyBrand.muted, fontSize: 13),
                       ),
                     ],
@@ -3140,22 +3293,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          SizedBox(
-            height: 128,
-            child: Row(
-              children: [
-                for (var i = 0; i < cards.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 10),
-                  Expanded(
-                    child: _SettingsNavTile(
-                      option: cards[i],
-                      selected: _selected == cards[i].id,
-                      onTap: () => setState(() => _selected = cards[i].id),
-                    ),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final card in cards)
+                SizedBox(
+                  width: 210,
+                  height: 76,
+                  child: _SettingsNavTile(
+                    option: card,
+                    selected: _selected == card.id,
+                    onTap: () => setState(() => _selected = card.id),
                   ),
-                ],
-              ],
-            ),
+                ),
+            ],
           ),
           const SizedBox(height: 14),
           Expanded(
@@ -3223,62 +3375,44 @@ class _SettingsNavTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected ? PhyimacyBrand.teal : const Color(0xFFE6EEEB),
-              width: selected ? 1.6 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: selected ? const Color(0x330F766E) : const Color(0x14073B3A),
-                blurRadius: selected ? 16 : 10,
-                offset: const Offset(0, 6),
-              ),
-            ],
+            color: selected ? PhyimacyBrand.forest : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: selected ? PhyimacyBrand.forest : const Color(0xFFE6EEEB)),
+            boxShadow: const [BoxShadow(color: Color(0x14073B3A), blurRadius: 10, offset: Offset(0, 4))],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: selected ? const Color(0xffdff7ee) : PhyimacyBrand.cream,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(option.icon, size: 18, color: selected ? PhyimacyBrand.teal : PhyimacyBrand.muted),
-                  ),
-                  const Spacer(),
-                  if (selected)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(color: PhyimacyBrand.gold, shape: BoxShape.circle),
-                    ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                option.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: PhyimacyBrand.ink,
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: selected ? const Color(0x22E8C47A) : PhyimacyBrand.cream,
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child: Icon(option.icon, size: 18, color: selected ? PhyimacyBrand.gold : PhyimacyBrand.teal),
               ),
-              const SizedBox(height: 4),
-              Text(
-                option.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(fontSize: 10.5, height: 1.25, color: PhyimacyBrand.muted),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      option.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: selected ? Colors.white : PhyimacyBrand.ink),
+                    ),
+                    Text(
+                      option.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 11, color: selected ? const Color(0xFFD7E5E1) : PhyimacyBrand.muted),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -3823,6 +3957,15 @@ class _SummaryChip extends StatelessWidget {
       );
 }
 
+String printedByName(UserProfile profile) {
+  final name = profile.displayName.trim();
+  if (name.isNotEmpty) return name;
+  final email = profile.email.trim();
+  final at = email.indexOf('@');
+  if (at > 0) return email.substring(0, at);
+  return email.isEmpty ? 'Staff' : email;
+}
+
 class PrinterSettingsScreen extends StatefulWidget {
   const PrinterSettingsScreen({super.key});
 
@@ -3848,12 +3991,49 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     PrinterSettingsStore.instance.set(_settings);
   }
 
+  Future<void> _printSampleReceipt() async {
+    _persistSettings();
+    final id = TenantContext.instance.pharmacyId?.trim() ?? '';
+    PharmacyRecord? shop;
+    if (id.isNotEmpty) {
+      try {
+        shop = await PharmacyService().getPharmacy(id);
+      } catch (_) {}
+    }
+    final name = (shop?.name ?? TenantContext.instance.pharmacyName ?? '').trim();
+    final profile = await AuthService().currentUserProfile();
+    final printedBy = profile == null ? 'Staff' : printedByName(profile);
+    final sample = ReceiptSummary(
+      receiptNumber: 'SAMPLE-001',
+      soldBy: printedBy,
+      paymentMethod: 'cash',
+      subtotalMinor: 4500,
+      discountMinor: 500,
+      totalMinor: 4000,
+      createdAt: DateTime.now(),
+      shop: ReceiptShop(
+        name: name.isEmpty ? 'PharmSpecio Pharmacy' : name,
+        phone: (shop?.phone ?? '').trim(),
+        address: (shop?.address ?? '').trim(),
+        cashier: printedBy,
+      ),
+      items: const [
+        ReceiptLineItem(name: 'Amoxicillin 250mg', quantity: 2, unitPriceMinor: 1500, totalMinor: 3000),
+        ReceiptLineItem(name: 'Paracetamol 500mg', quantity: 1, unitPriceMinor: 1500, totalMinor: 1500),
+      ],
+    );
+    if (!mounted) return;
+    await ReceiptService().printReceipt(sample, settings: _settings, context: context);
+  }
+
   Future<void> _saveSettings() async {
     if (!mounted) return;
     _persistSettings();
+    await PrinterSettingsStore.instance.save();
+    if (!mounted) return;
     final selected = _settings.selectedPrinterName.isNotEmpty ? _settings.selectedPrinterName : _effectivePrinterValue;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Printer settings saved. Active printer: ${selected.isEmpty ? 'Default Windows printer' : selected}')),
+      SnackBar(content: Text(S.t('Printer saved. It stays after you close the app. Active printer: ${selected.isEmpty ? 'Default Windows printer' : selected}', 'Printa imehifadhiwa. Itabaki ukifunga programu. Printa: ${selected.isEmpty ? 'Default Windows printer' : selected}'))),
     );
   }
 
@@ -3888,114 +4068,311 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 36),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Printer settings', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
-          const SizedBox(height: 6),
-          const Text('Choose the default receipt printer and decide whether a print should happen automatically or only when you press Print.', style: TextStyle(color: Color(0xff68807d))),
-          const SizedBox(height: 24),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xffedf2f2)),
-              boxShadow: const [
-                BoxShadow(color: Color(0x0f0f766e), blurRadius: 12, offset: Offset(0, 6)),
-              ],
-            ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final printerName = _settings.selectedPrinterName.trim().isEmpty ? _effectivePrinterValue : _settings.selectedPrinterName.trim();
+    return ListenableBuilder(
+      listenable: AppLocale.instance,
+      builder: (context, _) {
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 760;
+            final controls = _printerControls(printerName);
+            final preview = _receiptPreview();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xffdff7ee),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.print_outlined, color: Color(0xff0f766e)),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text('Receipt printer setup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
-                  ],
+                Text(
+                  S.t('Choose the slip, the printer, then save. Print a sample before the next sale.', 'Chagua kiolezo, printa, kisha hifadhi. Chapisha mfano kabla ya mauzo yanayofuata.'),
+                  style: GoogleFonts.inter(color: PhyimacyBrand.muted, height: 1.4),
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        key: ValueKey(_effectivePrinterValue),
-                        initialValue: _effectivePrinterValue,
-                        decoration: const InputDecoration(labelText: 'Receipt printer'),
-                        items: _printers.map((printer) => DropdownMenuItem(value: printer, child: Text(printer))).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _settings = _settings.copyWith(defaultPrinterName: value ?? _effectivePrinterValue);
-                            _persistSettings();
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    OutlinedButton(
-                      onPressed: _pickWindowsPrinter,
-                      child: const Text('Select printer'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                DropdownButtonFormField<String>(
-                  initialValue: _settings.paperMode,
-                  decoration: const InputDecoration(labelText: 'Receipt paper mode'),
-                  items: const [
-                    DropdownMenuItem(value: 'thermal', child: Text('Thermal receipt (80mm)')),
-                    DropdownMenuItem(value: 'standard', child: Text('Standard paper')),
-                    DropdownMenuItem(value: 'pdf', child: Text('PDF preview')),
-                  ],
-                  onChanged: (value) => setState(() => _settings = _settings.copyWith(paperMode: value ?? _settings.paperMode)),
-                ),
-                const SizedBox(height: 18),
-                TextFormField(
-                  initialValue: _settings.receiptPaperWidthMm.toString(),
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Receipt width (mm)'),
-                  onChanged: (value) {
-                    final parsed = int.tryParse(value) ?? 80;
-                    setState(() => _settings = _settings.copyWith(receiptPaperWidthMm: parsed));
-                  },
-                ),
-                const SizedBox(height: 18),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(S.t('Auto-print receipt after sale', 'Chapisha risiti baada ya mauzo')),
-                  value: _settings.autoPrintAfterSale,
-                  onChanged: (value) {
-                    setState(() {
-                      _settings = _settings.copyWith(autoPrintAfterSale: value);
-                      _persistSettings();
-                    });
-                  },
-                ),
-                const SizedBox(height: 20),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: _saveSettings,
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('Save settings'),
-                  ),
-                ),
+                const SizedBox(height: 16),
+                if (wide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 3, child: controls),
+                      const SizedBox(width: 16),
+                      Expanded(flex: 2, child: preview),
+                    ],
+                  )
+                else ...[
+                  controls,
+                  const SizedBox(height: 16),
+                  preview,
+                ],
+                const SizedBox(height: 16),
+                _actionBar(),
               ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _printerControls(String printerName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionLabel(S.t('Printer', 'Printa')),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: PhyimacyBrand.cream,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: PhyimacyBrand.line),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.print_rounded, color: PhyimacyBrand.teal),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(printerName, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: PhyimacyBrand.ink)),
+                    Text(S.t('Windows printer used for receipts', 'Printa ya Windows inayotumika kwa risiti'), style: GoogleFonts.inter(fontSize: 12, color: PhyimacyBrand.muted)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _pickWindowsPrinter,
+                child: Text(S.t('Change', 'Badilisha')),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        _sectionLabel(S.t('Template', 'Kiolezo')),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _templateCard('thermal', Icons.receipt_long_rounded, S.t('Shop slip', 'Risiti ya duka'), S.t('Thermal roll', 'Karatasi ya joto'))),
+            const SizedBox(width: 8),
+            Expanded(child: _templateCard('standard', Icons.description_outlined, S.t('A4 invoice', 'Ankara A4'), S.t('Full page', 'Ukurasa kamili'))),
+            const SizedBox(width: 8),
+            Expanded(child: _templateCard('pdf', Icons.picture_as_pdf_outlined, S.t('Preview', 'Angalia'), S.t('Check first', 'Ona kwanza'))),
+          ],
+        ),
+        if (_settings.paperMode == 'thermal') ...[
+          const SizedBox(height: 18),
+          _sectionLabel(S.t('Paper width', 'Upana wa karatasi')),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _widthChip(58, '58 mm')),
+              const SizedBox(width: 8),
+              Expanded(child: _widthChip(80, '80 mm')),
+            ],
+          ),
+        ],
+        const SizedBox(height: 18),
+        Material(
+          color: PhyimacyBrand.cream,
+          borderRadius: BorderRadius.circular(16),
+          child: SwitchListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: PhyimacyBrand.line)),
+            title: Text(S.t('Print automatically after each sale', 'Chapisha yenyewe baada ya kila mauzo'), style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
+            subtitle: Text(S.t('Turn this off if you want to press Print yourself.', 'Zima kama unataka kubonyeza Print mwenyewe.'), style: GoogleFonts.inter(fontSize: 12, color: PhyimacyBrand.muted)),
+            value: _settings.autoPrintAfterSale,
+            activeThumbColor: PhyimacyBrand.teal,
+            onChanged: (value) {
+              setState(() {
+                _settings = _settings.copyWith(autoPrintAfterSale: value);
+                _persistSettings();
+              });
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionBar() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: PhyimacyBrand.forest,
+              side: const BorderSide(color: PhyimacyBrand.forest),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
+            onPressed: _printSampleReceipt,
+            icon: const Icon(Icons.print_outlined),
+            label: Text(S.t('Print sample', 'Chapisha mfano')),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: PhyimacyBrand.forest,
+              foregroundColor: PhyimacyBrand.gold,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: _saveSettings,
+            icon: const Icon(Icons.save_rounded),
+            label: Text(S.t('Save settings', 'Hifadhi mipangilio'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Text(text.toUpperCase(), style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: PhyimacyBrand.teal));
+  }
+
+  Widget _templateCard(String mode, IconData icon, String title, String subtitle) {
+    final selected = _settings.paperMode == mode;
+    return Material(
+      color: selected ? const Color(0xffE7F5F2) : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          setState(() {
+            _settings = _settings.copyWith(paperMode: mode);
+            _persistSettings();
+          });
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(10, 14, 10, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: selected ? PhyimacyBrand.teal : PhyimacyBrand.line, width: selected ? 1.6 : 1),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: selected ? PhyimacyBrand.teal : PhyimacyBrand.muted),
+              const SizedBox(height: 8),
+              Text(title, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 13, color: PhyimacyBrand.ink)),
+              const SizedBox(height: 2),
+              Text(subtitle, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, color: PhyimacyBrand.muted)),
+              const SizedBox(height: 8),
+              Container(
+                width: selected ? 28 : 8,
+                height: 3,
+                decoration: BoxDecoration(color: selected ? PhyimacyBrand.gold : PhyimacyBrand.line, borderRadius: BorderRadius.circular(4)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _widthChip(int mm, String label) {
+    final selected = (_settings.receiptPaperWidthMm >= 72 ? 80 : 58) == mm;
+    return Material(
+      color: selected ? PhyimacyBrand.forest : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          setState(() {
+            _settings = _settings.copyWith(receiptPaperWidthMm: mm);
+            _persistSettings();
+          });
+        },
+        child: Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: selected ? PhyimacyBrand.forest : PhyimacyBrand.line),
+          ),
+          child: Text(label, style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: selected ? PhyimacyBrand.gold : PhyimacyBrand.ink)),
+        ),
+      ),
+    );
+  }
+
+  Widget _receiptPreview() {
+    final thermal = _settings.paperMode == 'thermal';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+      decoration: BoxDecoration(
+        color: PhyimacyBrand.forest,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Text(S.t('How it will print', 'Jinsi itakavyochapishwa'), style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: PhyimacyBrand.gold)),
+          const SizedBox(height: 14),
+          Container(
+            width: thermal ? 200 : double.infinity,
+            padding: EdgeInsets.fromLTRB(thermal ? 16 : 14, 18, thermal ? 16 : 14, 18),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFDF8),
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 16, offset: Offset(0, 8))],
+            ),
+            child: thermal ? _slipPreview() : _a4Preview(),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _slipPreview() {
+    Text line(String text, {bool bold = false, bool center = false, double size = 11}) {
+      return Text(
+        text,
+        textAlign: center ? TextAlign.center : TextAlign.start,
+        style: GoogleFonts.inter(fontSize: size, fontWeight: bold ? FontWeight.w800 : FontWeight.w500, color: PhyimacyBrand.ink, height: 1.35),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        line('PHARMSPECIO', bold: true, center: true, size: 9),
+        line('mombasa', bold: true, center: true, size: 14),
+        const Divider(height: 12),
+        line('SALES RECEIPT', bold: true, center: true, size: 9),
+        const SizedBox(height: 6),
+        line('Amoxicillin 250mg', bold: true),
+        line('2 x 1,500', size: 10),
+        Align(alignment: Alignment.centerRight, child: line('TZS 3,000', bold: true)),
+        const Divider(height: 14),
+        Row(children: [Expanded(child: line('TOTAL', bold: true)), line('TZS 4,000', bold: true)]),
+      ],
+    );
+  }
+
+  Widget _a4Preview() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: PhyimacyBrand.forest, borderRadius: BorderRadius.circular(8)),
+          child: Text('PHARMSPECIO', style: GoogleFonts.inter(color: PhyimacyBrand.gold, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1)),
+        ),
+        const SizedBox(height: 10),
+        Container(height: 8, color: const Color(0xffedf2f2)),
+        const SizedBox(height: 6),
+        Container(height: 8, width: 120, color: const Color(0xffedf2f2)),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(8),
+          color: PhyimacyBrand.cream,
+          child: Text('TOTAL  TZS 4,000', style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: PhyimacyBrand.forest, fontSize: 12)),
+        ),
+      ],
     );
   }
 }
@@ -4011,7 +4388,7 @@ class CategoriesScreen extends StatefulWidget {
 
   final UserProfile profile;
   final bool embedded;
-  final void Function(Medicine medicine)? onOpenMedicine;
+  final Future<void> Function(Medicine medicine)? onOpenMedicine;
   final void Function(Medicine medicine)? onDeleteMedicine;
 
   @override
@@ -4020,11 +4397,21 @@ class CategoriesScreen extends StatefulWidget {
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
 
   @override
   void dispose() {
+    _searchFocus.dispose();
     _search.dispose();
     super.dispose();
+  }
+
+  void _keepSearchCursor() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _searchFocus.requestFocus();
+      _search.selection = TextSelection.collapsed(offset: _search.text.length);
+    });
   }
 
   @override
@@ -4088,6 +4475,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   ],
                   TextField(
                     controller: _search,
+                    focusNode: _searchFocus,
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       hintText: S.t('Search a product or category', 'Tafuta dawa au kundi'),
@@ -4164,7 +4552,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                                                 children: [
                                                   IconButton(
                                                     tooltip: S.t('Edit category', 'Hariri kundi'),
-                                                    onPressed: () => _editCategory(context, service, category: category),
+                                                    onPressed: () async {
+                                                      await _editCategory(context, service, category: category);
+                                                      _keepSearchCursor();
+                                                    },
                                                     icon: const Icon(Icons.edit_outlined, color: Color(0xff0f766e)),
                                                   ),
                                                   IconButton(
@@ -4198,7 +4589,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                                                         onPressed: () => widget.onDeleteMedicine!(medicine),
                                                         icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffb42318)),
                                                       ),
-                                                onTap: widget.onOpenMedicine == null ? null : () => widget.onOpenMedicine!(medicine),
+                                                onTap: widget.onOpenMedicine == null
+                                                    ? null
+                                                    : () async {
+                                                        await widget.onOpenMedicine!(medicine);
+                                                        _keepSearchCursor();
+                                                      },
                                               ),
                                         ],
                                       ),
@@ -4260,6 +4656,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
     controller.dispose();
     if (saved == true && mounted) setState(() {});
+    _keepSearchCursor();
   }
 
   Future<void> _deleteCategory(BuildContext context, MedicineService service, CategoryOption category, int productCount) async {
@@ -4715,12 +5112,51 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
         ? true
         : medicine.canSellPiecesByType && medicine.packSize <= 1;
     DateTime? expiryDate = medicine?.expiryDate?.toDate();
+    final formScroll = ScrollController();
+    final nameFocus = FocusNode();
+    final skuFocus = FocusNode();
+    final categoryFocus = FocusNode();
+    final purchaseFocus = FocusNode();
+    final sellingFocus = FocusNode();
+    final stockFocus = FocusNode();
+    final reorderFocus = FocusNode();
+    final packFocus = FocusNode();
+    final minSaleFocus = FocusNode();
+    final nameKey = GlobalKey();
+    final skuKey = GlobalKey();
+    final categoryKey = GlobalKey();
+    final purchaseKey = GlobalKey();
+    final sellingKey = GlobalKey();
+    final stockKey = GlobalKey();
+    final reorderKey = GlobalKey();
+    final packKey = GlobalKey();
+    final minSaleKey = GlobalKey();
+    final expiryKey = GlobalKey();
+    var expiryMissing = false;
+    String? formBanner;
+    var savingMedicine = false;
+    Future<void> Function()? saveHold;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => ListenableBuilder(
         listenable: AppLocale.instance,
         builder: (context, _) => StatefulBuilder(
-        builder: (context, setDialogState) => Dialog(
+        builder: (context, setDialogState) => Focus(
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey != LogicalKeyboardKey.enter && event.logicalKey != LogicalKeyboardKey.numpadEnter) {
+              return KeyEventResult.ignored;
+            }
+            final route = ModalRoute.of(dialogContext);
+            if (route != null && !route.isCurrent) return KeyEventResult.ignored;
+            final focused = FocusManager.instance.primaryFocus?.context;
+            if (focused != null && focused.findAncestorWidgetOfExactType<ButtonStyleButton>() != null) {
+              return KeyEventResult.ignored;
+            }
+            saveHold?.call();
+            return KeyEventResult.handled;
+          },
+          child: Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: SizedBox(
             width: 560,
@@ -4729,6 +5165,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
               child: Form(
                 key: formKey,
                 child: SingleChildScrollView(
+                  controller: formScroll,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -4752,12 +5189,21 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         ),
                         IconButton(onPressed: () => Navigator.pop(dialogContext), icon: const Icon(Icons.close_rounded)),
                       ]),
-                      const SizedBox(height: 26),
+                      const SizedBox(height: 10),
+                      Text(
+                        S.t('Press Enter to save. Leave optional fields empty.', 'Bonyeza Enter kuhifadhi. Sehemu zisizo za lazima zinaweza kubaki tupu.'),
+                        style: const TextStyle(fontSize: 12, color: Color(0xff68807d)),
+                      ),
+                      if (formBanner != null) ...[
+                        const SizedBox(height: 8),
+                        Text(formBanner!, style: const TextStyle(color: Color(0xffb42318), fontWeight: FontWeight.w700)),
+                      ],
+                      const SizedBox(height: 16),
                       _FormSectionLabel(S.t('Medicine details', 'Maelezo ya dawa')),
                       const SizedBox(height: 10),
-                      _requiredField(name, S.t('Medicine name', 'Jina la dawa'), icon: Icons.medication_outlined),
+                      _requiredField(name, S.t('Medicine name', 'Jina la dawa'), icon: Icons.medication_outlined, focusNode: nameFocus, fieldKey: nameKey, onSubmit: () => saveHold?.call()),
                       const SizedBox(height: 10),
-                      Row(children: [Expanded(child: _requiredField(sku, S.t('SKU / code', 'SKU / namba'), icon: Icons.qr_code_2_rounded)), const SizedBox(width: 12), Expanded(child: DropdownButtonFormField<String>(
+                      Row(children: [Expanded(child: _requiredField(sku, S.t('SKU / code', 'SKU / namba'), icon: Icons.qr_code_2_rounded, focusNode: skuFocus, fieldKey: skuKey, onSubmit: () => saveHold?.call())), const SizedBox(width: 12), Expanded(child: DropdownButtonFormField<String>(
                         initialValue: BaseUnits.options.contains(baseUnit) ? baseUnit : 'Tablet',
                         decoration: InputDecoration(
                           labelText: S.t('This is a', 'Hii ni'),
@@ -4783,7 +5229,9 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       const SizedBox(height: 22),
                       _FormSectionLabel(S.t('Classification', 'Aina')),
                       const SizedBox(height: 10),
-                      StreamBuilder<List<CategoryOption>>(
+                      KeyedSubtree(
+                        key: categoryKey,
+                        child: StreamBuilder<List<CategoryOption>>(
                         stream: service.watchCategories(),
                         builder: (context, snapshot) {
                           final categories = snapshot.data ?? const <CategoryOption>[];
@@ -4821,6 +5269,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                                     ))
                                 .toList();
                             content = DropdownButtonFormField<String>(
+                              focusNode: categoryFocus,
                               initialValue: selectedCategoryId == null || !items.any((item) => item.value == selectedCategoryId) ? null : selectedCategoryId,
                               items: items,
                               onChanged: (value) => setDialogState(() => selectedCategoryId = value),
@@ -4853,6 +5302,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             ],
                           );
                         },
+                      ),
                       ),
                       const SizedBox(height: 22),
                       _FormSectionLabel(S.t('Price & stock', 'Bei na stock')),
@@ -4905,13 +5355,20 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                                     ? S.t('Buying price of one pack (TZS)', 'Bei ya kununua ya pakiti moja (TZS)')
                                     : S.t('Buying price of one item (TZS)', 'Bei ya kununua ya kipande kimoja (TZS)'),
                             icon: Icons.payments_outlined,
+                            focusNode: purchaseFocus,
+                            fieldKey: purchaseKey,
+                            onSubmit: () => saveHold?.call(),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextFormField(
+                            key: sellingKey,
+                            focusNode: sellingFocus,
                             controller: sellingPrice,
                             keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) => saveHold?.call(),
                             onChanged: (_) => setDialogState(() {}),
                             decoration: InputDecoration(
                               labelText: BaseUnits.sellsByPiece(baseUnit) && stockByTablets
@@ -4945,8 +5402,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       ),
                       const SizedBox(height: 10),
                       TextFormField(
+                        key: stockKey,
+                        focusNode: stockFocus,
                         controller: openingQty,
                         keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => saveHold?.call(),
                         decoration: InputDecoration(
                           labelText: BaseUnits.sellsByPiece(baseUnit) && stockByTablets
                               ? S.t('Units in stock now (tablets)', 'Idadi iliyopo sasa (vidonge)')
@@ -4967,16 +5428,22 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         const SizedBox(height: 10),
                         TextFormField(
                           controller: batchNumber,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => saveHold?.call(),
                           decoration: InputDecoration(labelText: S.t('Batch no. (optional)', 'Namba ya batch (si lazima)'), prefixIcon: const Icon(Icons.qr_code_2_rounded, size: 19)),
                         ),
                       ],
                       const SizedBox(height: 10),
-                      _numberField(reorderLevel, S.t('Alert me when stock reaches', 'Niarifu stock ikifika'), icon: Icons.warning_amber_rounded),
+                      _numberField(reorderLevel, S.t('Alert me when stock reaches', 'Niarifu stock ikifika'), icon: Icons.warning_amber_rounded, focusNode: reorderFocus, fieldKey: reorderKey, onSubmit: () => saveHold?.call()),
                       if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets) ...[
                         const SizedBox(height: 10),
                         TextFormField(
+                          key: packKey,
+                          focusNode: packFocus,
                           controller: packSize,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => saveHold?.call(),
                           onChanged: (_) => setDialogState(() {}),
                           decoration: InputDecoration(
                             labelText: S.t('Tablets in one pack', 'Vidonge kwenye pakiti moja'),
@@ -4992,8 +5459,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       if (BaseUnits.sellsByPiece(baseUnit)) ...[
                         const SizedBox(height: 10),
                         TextFormField(
+                          key: minSaleKey,
+                          focusNode: minSaleFocus,
                           controller: minSaleQty,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => saveHold?.call(),
                           onChanged: (_) => setDialogState(() {}),
                           decoration: InputDecoration(
                             labelText: S.t('Tablets sold together at this price (e.g. 5)', 'Vidonge vinavyouzwa pamoja kwa bei hii (mf. 5)'),
@@ -5018,18 +5489,34 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets) ...[
                         const SizedBox(height: 10),
                         Row(children: [
-                          Expanded(child: TextFormField(controller: stripSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Strip size (optional)', 'Ukubwa wa strip (si lazima)'), helperText: S.t('e.g. 10', 'mf. 10'), prefixIcon: const Icon(Icons.view_week_outlined, size: 19)))),
+                          Expanded(child: TextFormField(controller: stripSize, keyboardType: TextInputType.number, textInputAction: TextInputAction.done, onFieldSubmitted: (_) => saveHold?.call(), decoration: InputDecoration(labelText: S.t('Strip size (optional)', 'Ukubwa wa strip (si lazima)'), helperText: S.t('e.g. 10', 'mf. 10'), prefixIcon: const Icon(Icons.view_week_outlined, size: 19)))),
                           const SizedBox(width: 12),
-                          Expanded(child: TextFormField(controller: boxSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Box size (optional)', 'Ukubwa wa boksi (si lazima)'), helperText: S.t('e.g. 100', 'mf. 100'), prefixIcon: const Icon(Icons.inventory_outlined, size: 19)))),
+                          Expanded(child: TextFormField(controller: boxSize, keyboardType: TextInputType.number, textInputAction: TextInputAction.done, onFieldSubmitted: (_) => saveHold?.call(), decoration: InputDecoration(labelText: S.t('Box size (optional)', 'Ukubwa wa boksi (si lazima)'), helperText: S.t('e.g. 100', 'mf. 100'), prefixIcon: const Icon(Icons.inventory_outlined, size: 19)))),
                         ]),
                       ],
                       const SizedBox(height: 10),
                       _FormSectionLabel(S.t('Expiry', 'Kuisha')),
                       const SizedBox(height: 8),
-                      _ExpiryDateFields(
-                        value: expiryDate,
-                        allowPast: editing,
-                        onChanged: (picked) => setDialogState(() => expiryDate = picked),
+                      KeyedSubtree(
+                        key: expiryKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _ExpiryDateFields(
+                              value: expiryDate,
+                              allowPast: editing,
+                              onChanged: (picked) => setDialogState(() {
+                                expiryDate = picked;
+                                expiryMissing = false;
+                              }),
+                            ),
+                            if (expiryMissing)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(S.t('Expiry date is required when stock is more than 0.', 'Tarehe ya kuisha inahitajika stock ikiwa zaidi ya 0.'), style: const TextStyle(color: Color(0xffb42318), fontWeight: FontWeight.w700)),
+                              ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -5039,17 +5526,76 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       const SizedBox(height: 5),
                       CheckboxListTile(contentPadding: EdgeInsets.zero, value: prescription, onChanged: (value) => setDialogState(() => prescription = value ?? false), title: Text(S.t('Requires prescription', 'Inahitaji dawa ya daktari')), subtitle: Text(S.t('Flag this medicine for controlled dispensing', 'Weka alama dawa hii kwa usambazaji unaodhibitiwa')), controlAffinity: ListTileControlAffinity.leading),
                       const SizedBox(height: 15),
-                      Row(mainAxisAlignment: MainAxisAlignment.end, children: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))), const SizedBox(width: 10), FilledButton.icon(onPressed: () async {
-                        if (!formKey.currentState!.validate()) return;
-                        if (selectedCategoryId == null || selectedCategoryId!.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(S.t('Select a category before saving.', 'Chagua kundi kabla ya kuhifadhi.'))));
+                      Row(mainAxisAlignment: MainAxisAlignment.end, children: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))), const SizedBox(width: 10), FilledButton.icon(onPressed: saveHold = () async {
+                        if (savingMedicine) return;
+                        savingMedicine = true;
+                        try {
+                        String? missing;
+                        FocusNode? focus;
+                        GlobalKey? anchor;
+                        expiryMissing = false;
+                        if (name.text.trim().isEmpty) {
+                          missing = S.t('Medicine name is required.', 'Jina la dawa linahitajika.');
+                          focus = nameFocus;
+                          anchor = nameKey;
+                        } else if (sku.text.trim().isEmpty) {
+                          missing = S.t('SKU / code is required.', 'SKU / namba inahitajika.');
+                          focus = skuFocus;
+                          anchor = skuKey;
+                        } else if (selectedCategoryId == null || selectedCategoryId!.isEmpty) {
+                          missing = S.t('Select a category.', 'Chagua kundi.');
+                          focus = categoryFocus;
+                          anchor = categoryKey;
+                        } else if (int.tryParse(purchasePrice.text.trim()) == null) {
+                          missing = S.t('Buying price is required.', 'Bei ya kununua inahitajika.');
+                          focus = purchaseFocus;
+                          anchor = purchaseKey;
+                        } else if (int.tryParse(sellingPrice.text.trim()) == null) {
+                          missing = S.t('Selling price is required.', 'Bei ya kuuza inahitajika.');
+                          focus = sellingFocus;
+                          anchor = sellingKey;
+                        } else if (editing && int.tryParse(openingQty.text.trim()) == null) {
+                          missing = S.t('Enter stock on hand.', 'Weka stock iliyopo.');
+                          focus = stockFocus;
+                          anchor = stockKey;
+                        } else if (!editing && openingQty.text.trim().isNotEmpty && int.tryParse(openingQty.text.trim()) == null) {
+                          missing = S.t('Stock must be a whole number.', 'Stock iwe namba kamili.');
+                          focus = stockFocus;
+                          anchor = stockKey;
+                        } else if (int.tryParse(reorderLevel.text.trim()) == null) {
+                          missing = S.t('Stock alert number is required.', 'Namba ya tahadhari ya stock inahitajika.');
+                          focus = reorderFocus;
+                          anchor = reorderKey;
+                        } else if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets && ((int.tryParse(packSize.text.trim()) ?? 0) < 2)) {
+                          missing = S.t('Enter how many tablets are in one pack.', 'Weka vidonge vingapi kwenye pakiti moja.');
+                          focus = packFocus;
+                          anchor = packKey;
+                        } else if (BaseUnits.sellsByPiece(baseUnit) && ((int.tryParse(minSaleQty.text.trim()) ?? 0) < 1)) {
+                          missing = S.t('Enter how many tablets are sold together.', 'Weka vidonge vingapi vinauzwa pamoja.');
+                          focus = minSaleFocus;
+                          anchor = minSaleKey;
+                        } else if ((int.tryParse(openingQty.text.trim()) ?? 0) > 0 && expiryDate == null) {
+                          missing = S.t('Expiry date is required when stock is more than 0.', 'Tarehe ya kuisha inahitajika stock ikiwa zaidi ya 0.');
+                          expiryMissing = true;
+                          anchor = expiryKey;
+                        }
+                        formKey.currentState!.validate();
+                        if (missing != null) {
+                          formBanner = missing;
+                          setDialogState(() {});
+                          final target = anchor;
+                          final node = focus;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            final field = target?.currentContext;
+                            if (field != null) {
+                              Scrollable.ensureVisible(field, alignment: 0.2, duration: const Duration(milliseconds: 280));
+                            }
+                            node?.requestFocus();
+                          });
                           return;
                         }
+                        formBanner = null;
                         final qty = int.tryParse(openingQty.text.trim()) ?? 0;
-                        if (qty > 0 && expiryDate == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(S.t('Set the expiry date before saving stock.', 'Weka tarehe ya kuisha kabla ya kuhifadhi stock.'))));
-                          return;
-                        }
                         try {
                           final parsedPack = BaseUnits.sellsByPiece(baseUnit)
                               ? (stockByTablets ? 1 : int.parse(packSize.text))
@@ -5124,6 +5670,9 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             ),
                           ));
                         }
+                        } finally {
+                          savingMedicine = false;
+                        }
                       }, icon: const Icon(Icons.check_rounded, size: 18), label: Text(editing ? S.t('Save changes', 'Hifadhi mabadiliko') : S.t('Save medicine', 'Hifadhi dawa')))]),
                     ],
                   ),
@@ -5133,8 +5682,19 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
           ),
         ),
         ),
+        ),
       ),
     );
+    formScroll.dispose();
+    nameFocus.dispose();
+    skuFocus.dispose();
+    categoryFocus.dispose();
+    purchaseFocus.dispose();
+    sellingFocus.dispose();
+    stockFocus.dispose();
+    reorderFocus.dispose();
+    packFocus.dispose();
+    minSaleFocus.dispose();
     name.dispose();
     sku.dispose();
     unit.dispose();
@@ -5345,15 +5905,39 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     }
   }
 
-  Widget _requiredField(TextEditingController controller, String label, {IconData? icon}) => TextFormField(
+  Widget _requiredField(
+    TextEditingController controller,
+    String label, {
+    IconData? icon,
+    FocusNode? focusNode,
+    Key? fieldKey,
+    VoidCallback? onSubmit,
+  }) =>
+      TextFormField(
+        key: fieldKey,
+        focusNode: focusNode,
         controller: controller,
+        textInputAction: TextInputAction.done,
+        onFieldSubmitted: onSubmit == null ? null : (_) => onSubmit(),
         decoration: InputDecoration(labelText: label, prefixIcon: icon == null ? null : Icon(icon, size: 19)),
         validator: (value) => value == null || value.trim().isEmpty ? S.t('Required', 'Lazima') : null,
       );
 
-  Widget _numberField(TextEditingController controller, String label, {IconData? icon}) => TextFormField(
+  Widget _numberField(
+    TextEditingController controller,
+    String label, {
+    IconData? icon,
+    FocusNode? focusNode,
+    Key? fieldKey,
+    VoidCallback? onSubmit,
+  }) =>
+      TextFormField(
+        key: fieldKey,
+        focusNode: focusNode,
         controller: controller,
         keyboardType: TextInputType.number,
+        textInputAction: TextInputAction.done,
+        onFieldSubmitted: onSubmit == null ? null : (_) => onSubmit(),
         decoration: InputDecoration(labelText: label, prefixIcon: icon == null ? null : Icon(icon, size: 19)),
         validator: (value) => int.tryParse(value ?? '') == null ? S.t('Enter a whole number', 'Weka namba kamili') : null,
       );

@@ -1,13 +1,24 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import 'auth_account_service.dart';
 import 'firestore_collections.dart';
+import 'login_log_service.dart';
 import 'medicine_service.dart';
 import 'permissions.dart';
 import 'pharmacy_service.dart';
 import 'tenant_context.dart';
 import 'user_profile.dart';
+
+class AuthSignals extends ChangeNotifier {
+  AuthSignals._();
+  static final instance = AuthSignals._();
+
+  void bump() {
+    notifyListeners();
+  }
+}
 
 class AuthService {
   AuthService({FirebaseAuth? auth}) : _auth = auth ?? FirebaseAuth.instance;
@@ -60,13 +71,21 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    try {
+      await LoginLogService().recordLogout();
+    } catch (_) {}
     MedicineService.dropSharedListeners();
     TenantContext.instance.clear();
     await _auth.signOut();
+    AuthSignals.instance.bump();
   }
 
-  Future<UserCredential> signIn({required String email, required String password}) {
-    return _auth.signInWithEmailAndPassword(email: email, password: password);
+  Future<UserCredential> signIn({required String email, required String password}) async {
+    try {
+      return await _auth.signInWithEmailAndPassword(email: email, password: password);
+    } finally {
+      AuthSignals.instance.bump();
+    }
   }
 
   Future<String?> currentUserRole() async {

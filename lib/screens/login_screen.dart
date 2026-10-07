@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -39,7 +41,14 @@ class _LoginScreenState extends State<LoginScreen> {
       await _authService.signIn(
         email: _emailController.text.trim().toLowerCase(),
         password: _passwordController.text,
-      );
+      ).timeout(const Duration(seconds: 25));
+    } on TimeoutException {
+      setState(() {
+        _error = S.t(
+          'Sign-in is taking too long. Check your internet and try again.',
+          'Kuingia kumechelewa. Angalia intaneti kisha jaribu tena.',
+        );
+      });
     } on FirebaseAuthException catch (error) {
       setState(() {
         _error = switch (error.code) {

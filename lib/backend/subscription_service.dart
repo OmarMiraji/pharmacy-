@@ -41,16 +41,7 @@ class SubscriptionState {
 
   DateTime? get licenseEndsAt => expiresAt ?? trialEndsAt;
 
-  int get daysRemaining {
-    final expiry = licenseEndsAt;
-    if (expiry == null) return 0;
-    final now = DateTime.now();
-    if (SubscriptionService.periodEndedOnCalendar(expiry, now: now)) return 0;
-    final wholeDays = DateTime(expiry.year, expiry.month, expiry.day)
-        .difference(DateTime(now.year, now.month, now.day))
-        .inDays;
-    return wholeDays < 0 ? 0 : wholeDays;
-  }
+  int get daysRemaining => SubscriptionService.calendarDaysRemaining(licenseEndsAt);
 
   String get trialCountdownLabel {
     if (!isTrial) return '';
@@ -74,6 +65,7 @@ class ActivationCodeRecord {
     this.usedByPharmacyId,
     this.usedAt,
     this.createdAt,
+    this.startsAt,
   });
 
   final String code;
@@ -86,6 +78,13 @@ class ActivationCodeRecord {
   final String? usedByPharmacyId;
   final DateTime? usedAt;
   final DateTime? createdAt;
+  final DateTime? startsAt;
+
+  String get linkedPharmacyId {
+    final used = (usedByPharmacyId ?? '').trim();
+    if (used.isNotEmpty) return used;
+    return (pharmacyId ?? '').trim();
+  }
 
   factory ActivationCodeRecord.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
@@ -100,6 +99,7 @@ class ActivationCodeRecord {
       usedByPharmacyId: data['usedByPharmacyId'] as String?,
       usedAt: (data['usedAt'] as Timestamp?)?.toDate(),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      startsAt: (data['startsAt'] as Timestamp?)?.toDate(),
     );
   }
 }
@@ -114,6 +114,37 @@ class SubscriptionService {
     'biannual': 180,
     'yearly': 365,
   };
+
+  static int calendarDaysRemaining(DateTime? expiry, {DateTime? now}) {
+    if (expiry == null) return 0;
+    final current = now ?? DateTime.now();
+    if (periodEndedOnCalendar(expiry, now: current)) return 0;
+    final wholeDays = DateTime(expiry.year, expiry.month, expiry.day)
+        .difference(DateTime(current.year, current.month, current.day))
+        .inDays;
+    return wholeDays < 0 ? 0 : wholeDays;
+  }
+
+  /// Unused tokens still have their full duration. Used tokens follow the pharmacy end date.
+  static String tokenRemainingLabel({
+    required bool isUsed,
+    required int durationDays,
+    PharmacyRecord? pharmacy,
+    DateTime? now,
+  }) {
+    if (!isUsed) {
+      final days = durationDays <= 0 ? 0 : durationDays;
+      if (days == 1) return '1 day ready to activate';
+      return '$days days ready to activate';
+    }
+    if (pharmacy == null) return 'Used · pharmacy not linked';
+    final expiry = pharmacy.expiresAt ?? pharmacy.trialEndsAt;
+    if (expiry == null) return 'Used · no end date';
+    final days = calendarDaysRemaining(expiry, now: now);
+    if (days <= 0) return 'Ended · 0 days left';
+    if (days == 1) return '1 day left';
+    return '$days days left';
+  }
 
   /// Trial/plan date printed as 1/10/2026 ends at the start of that local calendar day.
   static bool periodEndedOnCalendar(DateTime? expiry, {DateTime? now}) {
@@ -297,17 +328,35 @@ class SubscriptionService {
 
   Stream<List<ActivationCodeRecord>> watchCodes() {
     return _firestore.collection(FirestoreCollections.subscriptionCodes).snapshots().map((snapshot) {
-      final codes = snapshot.docs.map(ActivationCodeRecord.fromDoc).toList()
+      final codes = snapshot.docs
+          .where((doc) => doc.data()['hiddenFromAdmin'] != true)
+          .map(ActivationCodeRecord.fromDoc)
+          .toList()
         ..sort((a, b) => (b.createdAt ?? DateTime(2000)).compareTo(a.createdAt ?? DateTime(2000)));
       return codes;
     });
   }
 
-  /// Removes a token from your list only. Does not lock or change a shop that already activated.
-  Future<void> deleteActivationToken(String code) async {
+  static bool usedTokenExpired(PharmacyRecord? pharmacy) {
+    if (pharmacy == null) return false;
+    return periodEndedOnCalendar(pharmacy.expiresAt ?? pharmacy.trialEndsAt);
+  }
+
+  /// Unused and expired tokens are removed from the database.
+  /// A used token that is still active is hidden from this list only. The shop license stays.
+  Future<String> deleteActivationToken(String code, {required bool hideOnly}) async {
     final id = _normalizeCode(code);
-    if (id.isEmpty) return;
-    await _firestore.collection(FirestoreCollections.subscriptionCodes).doc(id).delete();
+    if (id.isEmpty) return 'unused';
+    final ref = _firestore.collection(FirestoreCollections.subscriptionCodes).doc(id);
+    if (hideOnly) {
+      await ref.set({
+        'hiddenFromAdmin': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return 'hidden';
+    }
+    await ref.delete();
+    return 'deleted';
   }
 
   Future<int> deleteUnusedActivationTokens() async {

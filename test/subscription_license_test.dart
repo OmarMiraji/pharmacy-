@@ -83,4 +83,29 @@ void main() {
       expect(license.trialCountdownLabel, contains('5 days remaining'));
     });
   });
+
+  test('unused token shows its duration and a used token shows pharmacy time left', () {
+    expect(
+      SubscriptionService.tokenRemainingLabel(isUsed: false, durationDays: 30),
+      '30 days ready to activate',
+    );
+    final now = DateTime(2026, 10, 7, 12);
+    final pharmacy = PharmacyRecord(
+      id: 'pharm-1',
+      name: 'Afya Pharmacy',
+      status: 'active',
+      plan: 'monthly',
+      isUnlocked: true,
+      isTrial: false,
+      expiresAt: DateTime(2026, 10, 17, 18),
+    );
+    expect(
+      SubscriptionService.tokenRemainingLabel(isUsed: true, durationDays: 30, pharmacy: pharmacy, now: now),
+      '10 days left',
+    );
+    expect(
+      SubscriptionService.tokenRemainingLabel(isUsed: true, durationDays: 30, now: now),
+      'Used · pharmacy not linked',
+    );
+  });
 }

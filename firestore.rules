@@ -493,6 +493,28 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /login_sessions/{sessionId} {
+      allow get, list: if isSuperAdmin() || (
+        isShopAdminActor()
+        && tenantId() != null
+        && resource.data.pharmacyId == tenantId()
+      );
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.actorEmail == request.auth.token.email
+        && request.resource.data.event in ['login', 'logout']
+        && request.resource.data.actorName is string
+        && request.resource.data.role is string
+        && request.resource.data.pharmacyId is string
+        && request.resource.data.pharmacyName is string
+        && request.resource.data.createdAt == request.time
+        && (
+          isSuperAdmin()
+          || (tenantId() != null && request.resource.data.pharmacyId == tenantId())
+        );
+      allow update, delete: if false;
+    }
+
     match /license_payments/{paymentId} {
       allow read, write: if isSuperAdmin();
     }

@@ -361,10 +361,15 @@ Future<void> showCreateStaffDialog(
                               final created = shopMode == 'new'
                                   ? S.t('New pharmacy and admin login are ready.', 'Duka jipya na login ya admin viko tayari.')
                                   : S.t('Staff login is ready.', 'Login ya staff iko tayari.');
+                              final mailLine = switch (mailNote) {
+                                null => null,
+                                'email-not-ready' => S.t('Set up Gmail first', 'Weka Gmail kwanza'),
+                                _ => S.t('Email was not sent', 'Barua pepe haijatumwa'),
+                              };
                               showAppNotice(
                                 context,
-                                mailNote == null ? created : '$created $mailNote',
-                                kind: mailNote == null ? AppNoticeKind.success : AppNoticeKind.error,
+                                mailLine == null ? created : '$created $mailLine',
+                                kind: mailLine == null ? AppNoticeKind.success : AppNoticeKind.error,
                               );
                             }
                           } catch (error) {

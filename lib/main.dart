@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'app.dart';
+import 'backend/login_log_service.dart';
+import 'backend/printer_settings.dart';
 import 'firebase_options.dart';
 import 'l10n/app_locale.dart';
 
@@ -15,9 +17,13 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   try {
+    await LoginLogService().closePreviousSession().timeout(const Duration(seconds: 4));
+  } catch (_) {}
+  try {
     await FirebaseAuth.instance.signOut();
   } catch (_) {}
   await AppLocale.instance.load();
+  await PrinterSettingsStore.instance.load();
   try {
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,

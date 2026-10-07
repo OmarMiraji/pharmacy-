@@ -94,7 +94,7 @@ class TransactionalEmailService {
     try {
       final smtp = await loadSmtp();
       if (smtp == null) {
-        return 'Email is not configured. Open Email settings and save the Gmail App password.';
+        return 'email-not-ready';
       }
       final server = gmail(smtp['user']!, smtp['pass']!);
       final message = mailer.Message()
@@ -105,7 +105,7 @@ class TransactionalEmailService {
       await mailer.send(message, server);
       return null;
     } catch (error) {
-      return 'Login was created, but the email could not be sent: $error';
+      return 'email-not-sent';
     }
   }
 

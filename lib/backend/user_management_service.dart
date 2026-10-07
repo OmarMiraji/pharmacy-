@@ -12,6 +12,18 @@ class UserManagementService {
 
   final FirebaseFirestore _firestore;
 
+  Future<bool> isActiveEmail(String email) async {
+    final mail = email.trim().toLowerCase();
+    if (!mail.contains('@')) return false;
+    final users = _firestore.collection(FirestoreCollections.users);
+    final lowered = await users.where('email', isEqualTo: mail).limit(5).get();
+    final docs = lowered.docs.isNotEmpty
+        ? lowered.docs
+        : (await users.where('email', isEqualTo: email.trim()).limit(5).get()).docs;
+    if (docs.isEmpty) return false;
+    return docs.any((doc) => doc.data()['isActive'] != false);
+  }
+
   Stream<List<UserProfile>> watchUsers({String? pharmacyId}) {
     final tenant = TenantContext.instance;
     final filterId = (pharmacyId ?? '').trim();

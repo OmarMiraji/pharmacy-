@@ -13,6 +13,7 @@ import '../theme/brand.dart';
 import '../l10n/app_locale.dart';
 import '../widgets/language_toggle.dart';
 import 'announcements_admin_screen.dart';
+import 'login_logs_screen.dart';
 import 'app_update_screen.dart';
 import 'audit_logs_screen.dart';
 import 'chat_assistant_panel.dart';
@@ -53,6 +54,8 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
   List<_NavSection> get _sections => [
         _NavSection('OVERVIEW', [
           _NavDest('dashboard', S.t('Dashboard', 'Dashibodi'), Icons.dashboard_rounded),
+          _NavDest('logins', S.t('Login logs', 'Muda wa kuingia'), Icons.schedule_rounded),
+          _NavDest('updates', S.t('App updates', 'Updates'), Icons.system_update_alt_rounded),
         ]),
         _NavSection('CUSTOMERS', [
           _NavDest('customers', S.t('Customers', 'Wateja'), Icons.groups_rounded),
@@ -69,7 +72,6 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
           _NavDest('security', S.t('Security', 'Usalama'), Icons.shield_outlined),
         ]),
         _NavSection('UPDATES', [
-          _NavDest('updates', S.t('App updates', 'Updates'), Icons.system_update_alt_rounded),
           _NavDest('announcements', S.t('Announcements', 'Matangazo'), Icons.campaign_outlined),
         ]),
       ];
@@ -260,6 +262,8 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
         return PharmacyWorkspaceSettingsScreen(profile: widget.profile);
       case 'audit':
         return const AuditLogsScreen();
+      case 'logins':
+        return const LoginLogsScreen();
       case 'security':
         return const SecurityCenterScreen();
       case 'updates':
@@ -375,7 +379,7 @@ class _CustomerDashboard extends StatelessWidget {
                       Text('Good day, $greeting.', style: GoogleFonts.playfairDisplay(fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white, height: 1.1)),
                       const SizedBox(height: 8),
                       Text(
-                        'Your customers are the pharmacies on PharmSpecio. Create shops, grant licenses, and help logins here. Sales and stock stay inside each shop.',
+                        'Your customers are the pharmacies on PharmSpecio. Create shops, grant licenses, and help logins here. Sales and stock stay inside each shop. App updates is in the left menu: a new version reaches every shop only after you publish it and each shop installs it.',
                         style: GoogleFonts.inter(color: Colors.white.withValues(alpha: 0.82), height: 1.45, fontSize: 14),
                       ),
                     ],

@@ -96,6 +96,11 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('App updates', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+          const SizedBox(height: 8),
+          const Text(
+            'A change made on this computer stays on this computer until a new version is published. It does not update every shop by itself. After you publish a release, each pharmacy opens App updates and taps Update now. The same published version is what every shop can install.',
+            style: TextStyle(color: Color(0xff68807d), height: 1.45),
+          ),
           const SizedBox(height: 18),
           if (_loading)
             const Padding(
