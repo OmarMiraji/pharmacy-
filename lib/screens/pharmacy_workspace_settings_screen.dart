@@ -9,6 +9,8 @@ import '../backend/tenant_context.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
 import '../l10n/app_locale.dart';
+import '../theme/brand.dart';
+import '../widgets/app_notice.dart';
 
 class PharmacyWorkspaceSettingsScreen extends StatefulWidget {
   const PharmacyWorkspaceSettingsScreen({required this.profile, super.key});
@@ -68,8 +70,8 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
     setState(() => _loading = false);
   }
 
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _toast(String message, {bool error = false}) {
+    showAppNotice(context, message, kind: error ? AppNoticeKind.error : AppNoticeKind.success);
   }
 
   Future<bool> _confirmWithPassword({required String title, required String message}) async {
@@ -105,7 +107,7 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
       await AuthService().confirmPassword(password.text);
       return true;
     } catch (error) {
-      _toast('$error');
+      _toast('$error', error: true);
       return false;
     } finally {
       password.dispose();
@@ -125,10 +127,13 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
         address: _address.text,
         note: _note.text,
       );
-      _toast('Pharmacy information updated.');
+      _toast(S.t(
+        'Shop details saved. Name, phone, address, and notes are updated.',
+        'Taarifa za duka zimehifadhiwa. Jina, simu, anwani, na maelezo vimesasishwa.',
+      ));
       await _load();
     } catch (error) {
-      _toast('Could not update pharmacy: $error');
+      _toast(S.t('Could not save the shop details. Try again.', 'Taarifa za duka hazikuhifadhiwa. Jaribu tena.'), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -140,7 +145,7 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
       final file = await PharmacyDataService().backupToFile();
       _toast('Backup saved: ${file.path}');
     } catch (error) {
-      _toast('$error');
+      _toast('$error', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -157,7 +162,7 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
       final count = await PharmacyDataService().restoreFromPickedFile();
       _toast('Restored $count records.');
     } catch (error) {
-      _toast('$error');
+      _toast('$error', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -181,7 +186,7 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
           : await service.clearCollection(_clearTarget, pharmacyId: _targetPharmacyId);
       _toast('Cleared $count records.');
     } catch (error) {
-      _toast('$error');
+      _toast('$error', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -206,7 +211,7 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
       );
       _toast('Removed $count user profiles.');
     } catch (error) {
-      _toast('$error');
+      _toast('$error', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -223,9 +228,11 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(S.t('Pharmacy profile', 'Wasifu wa duka'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
+        Text(S.t('Shop details', 'Taarifa za duka'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
         const SizedBox(height: 6),
-        Text(S.t('Update shop information. Clear one data group or everything after entering your password.', 'Sasisha taarifa za duka. Futa kundi moja au kila kitu baada ya kuweka nenosiri.'), style: const TextStyle(color: Color(0xff68807d))),
+        Text(S.t('Name, phone, address, and notes for this pharmacy.', 'Jina, simu, anwani, na maelezo ya duka hili.'), style: const TextStyle(color: Color(0xff68807d))),
+        const SizedBox(height: 14),
+        _ShopDetailsCard(pharmacy: _pharmacy),
         const SizedBox(height: 18),
         if (widget.profile.isSuperAdmin)
           StreamBuilder<List<PharmacyRecord>>(
@@ -260,7 +267,10 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
                 TextFormField(
                   controller: _name,
                   enabled: _canManage && !_busy,
-                  decoration: InputDecoration(labelText: S.t('Pharmacy name', 'Jina la duka')),
+                  decoration: InputDecoration(
+                    labelText: S.t('Pharmacy name', 'Jina la duka'),
+                    prefixIcon: const Icon(Icons.storefront_outlined, size: 20),
+                  ),
                   validator: (value) => (value == null || value.trim().isEmpty) ? S.t('Name is required', 'Jina linahitajika') : null,
                 ),
                 const SizedBox(height: 10),
@@ -272,6 +282,7 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
                     labelText: S.t('Phone', 'Simu'),
                     hintText: TanzaniaPhone.hint,
                     helperText: S.t('Tanzania mobile, e.g. 0712345678', 'Simu ya Tanzania, mfano 0712345678'),
+                    prefixIcon: const Icon(Icons.phone_outlined, size: 20),
                   ),
                   validator: TanzaniaPhone.validate,
                 ),
@@ -279,14 +290,22 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
                 TextFormField(
                   controller: _address,
                   enabled: _canManage && !_busy,
-                  decoration: InputDecoration(labelText: S.t('Address', 'Anwani')),
+                  decoration: InputDecoration(
+                    labelText: S.t('Address', 'Anwani'),
+                    hintText: S.t('Street, ward, or city', 'Mtaa, kata, au mji'),
+                    prefixIcon: const Icon(Icons.location_on_outlined, size: 20),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _note,
                   enabled: _canManage && !_busy,
                   maxLines: 2,
-                  decoration: InputDecoration(labelText: S.t('Notes', 'Maelezo')),
+                  decoration: InputDecoration(
+                    labelText: S.t('Notes', 'Maelezo'),
+                    hintText: S.t('Anything else about this shop', 'Maelezo mengine ya duka'),
+                    prefixIcon: const Icon(Icons.notes_rounded, size: 20),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Align(
@@ -344,6 +363,64 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
           ],
         ),
       ],
+    );
+  }
+}
+
+class _ShopDetailsCard extends StatelessWidget {
+  const _ShopDetailsCard({required this.pharmacy});
+
+  final PharmacyRecord? pharmacy;
+
+  @override
+  Widget build(BuildContext context) {
+    final missing = S.t('Not added yet', 'Haijawekwa');
+    String show(String? value) {
+      final text = (value ?? '').trim();
+      return text.isEmpty ? missing : text;
+    }
+    final rows = <(IconData, String, String)>[
+      (Icons.storefront_outlined, S.t('Pharmacy name', 'Jina la duka'), show(pharmacy?.name)),
+      (Icons.phone_outlined, S.t('Phone', 'Simu'), show(pharmacy?.phone)),
+      (Icons.location_on_outlined, S.t('Address', 'Anwani'), show(pharmacy?.address)),
+      (Icons.notes_rounded, S.t('Notes', 'Maelezo'), show(pharmacy?.note)),
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      decoration: BoxDecoration(
+        color: const Color(0xfff4faf8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: PhyimacyBrand.line),
+      ),
+      child: Column(
+        children: [
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(row.$1, size: 18, color: PhyimacyBrand.teal),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 130,
+                    child: Text(row.$2, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
+                  ),
+                  Expanded(
+                    child: Text(
+                      row.$3,
+                      style: TextStyle(
+                        color: row.$3 == missing ? const Color(0xff8aa09c) : const Color(0xff183b3b),
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

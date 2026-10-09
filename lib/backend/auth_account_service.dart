@@ -193,6 +193,23 @@ class AuthAccountService {
     return client;
   }
 
+  /// True when Firebase knows this email, false when it does not, null when it will not say.
+  Future<bool?> emailHasLogin(String email) async {
+    final trimmed = email.trim().toLowerCase();
+    if (trimmed.isEmpty || !trimmed.contains('@')) return null;
+    try {
+      final json = await _identity('accounts:createAuthUri', {
+        'identifier': trimmed,
+        'continueUri': 'https://localhost',
+      });
+      final registered = json['registered'];
+      if (registered is bool) return registered;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> sendPasswordReset(String email) async {
     final trimmedEmail = email.trim().toLowerCase();
     if (trimmedEmail.isEmpty) throw ArgumentError('Enter your email address first.');

@@ -24,6 +24,7 @@ class Medicine {
     this.stripSize = 0,
     this.boxSize = 0,
     this.allowLooseSale = false,
+    this.allowHalfBlister = false,
     this.minSaleQty = 0,
     this.createdAt,
     this.updatedAt,
@@ -48,6 +49,7 @@ class Medicine {
   final int stripSize;
   final int boxSize;
   final bool allowLooseSale;
+  final bool allowHalfBlister;
   final int minSaleQty;
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
@@ -67,11 +69,17 @@ class Medicine {
 
   int get effectiveMinSaleQty {
     if (!canSellPiecesByType) return 1;
-    if (minSaleQty > 1) return minSaleQty;
+    if (minSaleQty >= 1) return minSaleQty;
     return 5;
   }
 
-  bool get sellsPricedLots => canSellPiecesByType && piecesPerPack <= 1 && effectiveMinSaleQty > 1;
+  bool get pricedByBlister => canSellPiecesByType && piecesPerPack <= 1 && stripSize > 1;
+
+  bool get sellsHalfBlister => pricedByBlister && allowHalfBlister && stripSize >= 2 && stripSize.isEven;
+
+  int get halfBlisterTablets => stripSize ~/ 2;
+
+  bool get sellsPricedLots => canSellPiecesByType && piecesPerPack <= 1 && !pricedByBlister && effectiveMinSaleQty > 1;
 
   int get saleLotSize => sellsPricedLots ? effectiveMinSaleQty : 1;
 
@@ -92,6 +100,9 @@ class Medicine {
     if (sellsPricedLots) {
       return (sellingPriceMinor / saleLotSize).round().clamp(0, sellingPriceMinor);
     }
+    if (pricedByBlister) {
+      return (sellingPriceMinor / stripSize).round().clamp(0, sellingPriceMinor);
+    }
     if (piecesPerPack <= 1) return sellingPriceMinor;
     return (sellingPriceMinor / piecesPerPack).round().clamp(0, sellingPriceMinor);
   }
@@ -109,6 +120,29 @@ class Medicine {
           baseLabel: baseLabel,
         ),
       );
+      return units;
+    }
+    if (pricedByBlister) {
+      units.add(
+        SellUnit(
+          id: 'strip',
+          label: 'Blister',
+          toBase: stripSize,
+          unitPriceMinor: sellingPriceMinor,
+          baseLabel: baseLabel,
+        ),
+      );
+      if (sellsHalfBlister) {
+        units.add(
+          SellUnit(
+            id: 'half',
+            label: 'Half blister',
+            toBase: halfBlisterTablets,
+            unitPriceMinor: (sellingPriceMinor / 2).round(),
+            baseLabel: baseLabel,
+          ),
+        );
+      }
       return units;
     }
     units.add(
@@ -159,6 +193,14 @@ class Medicine {
   String stockLabel([int? qty]) {
     final count = qty ?? quantityOnHand;
     if (!tracksBaseUnits) return '$count $baseLabel${count == 1 ? '' : 's'}';
+    if (pricedByBlister) {
+      final blisters = count ~/ stripSize;
+      final restBlister = count % stripSize;
+      final baseWord = count == 1 ? baseLabel : '${baseLabel}s';
+      if (blisters > 0 && restBlister > 0) return '$count $baseWord ($blisters blister + $restBlister)';
+      if (blisters > 0) return '$count $baseWord ($blisters blister)';
+      return '$count $baseWord';
+    }
     final packs = piecesPerPack > 1 ? count ~/ piecesPerPack : 0;
     final rest = piecesPerPack > 1 ? count % piecesPerPack : count;
     final baseWord = count == 1 ? baseLabel : '${baseLabel}s';
@@ -195,6 +237,7 @@ class Medicine {
       stripSize: (data['stripSize'] as num?)?.toInt() ?? 0,
       boxSize: (data['boxSize'] as num?)?.toInt() ?? 0,
       allowLooseSale: data['allowLooseSale'] == true,
+      allowHalfBlister: data['allowHalfBlister'] == true,
       minSaleQty: (data['minSaleQty'] as num?)?.toInt() ?? 0,
       createdAt: data['createdAt'] as Timestamp?,
       updatedAt: data['updatedAt'] as Timestamp?,
@@ -222,6 +265,7 @@ class Medicine {
       stripSize: stripSize,
       boxSize: boxSize,
       allowLooseSale: allowLooseSale,
+      allowHalfBlister: allowHalfBlister,
       minSaleQty: minSaleQty,
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -247,6 +291,7 @@ class Medicine {
         'stripSize': stripSize,
         'boxSize': boxSize,
         'allowLooseSale': allowLooseSale,
+        'allowHalfBlister': allowHalfBlister,
         'minSaleQty': minSaleQty,
       };
 }

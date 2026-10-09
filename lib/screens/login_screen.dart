@@ -4,9 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../backend/auth_account_service.dart';
 import '../backend/auth_service.dart';
 import '../l10n/app_locale.dart';
 import '../theme/brand.dart';
+import '../widgets/app_notice.dart';
 import '../widgets/language_toggle.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -43,29 +45,61 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       ).timeout(const Duration(seconds: 25));
     } on TimeoutException {
-      setState(() {
-        _error = S.t(
-          'Sign-in is taking too long. Check your internet and try again.',
-          'Kuingia kumechelewa. Angalia intaneti kisha jaribu tena.',
-        );
-      });
+      final message = S.t(
+        'Sign-in is taking too long. Check your internet and try again.',
+        'Kuingia kumechelewa. Angalia intaneti kisha jaribu tena.',
+      );
+      if (!mounted) return;
+      setState(() => _error = message);
+      showAppNotice(context, message, kind: AppNoticeKind.error);
     } on FirebaseAuthException catch (error) {
-      setState(() {
-        _error = switch (error.code) {
-          'user-not-found' || 'invalid-credential' || 'wrong-password' || 'INVALID_LOGIN_CREDENTIALS' =>
-            S.t('Incorrect email or password.', 'Barua pepe au nenosiri si sahihi.'),
-          'invalid-email' => S.t('Enter a valid email address.', 'Weka barua pepe sahihi.'),
-          'user-disabled' => S.t('This account is disabled. Contact your administrator.', 'Akaunti imefungwa. Wasiliana na admin.'),
-          'too-many-requests' => S.t('Too many attempts. Please wait a moment and try again.', 'Majaribio mengi. Subiri kidogo kisha jaribu tena.'),
-          'network-request-failed' => S.t('Network error. Check your internet connection and try again.', 'Hitilafu ya mtandao. Angalia intaneti kisha jaribu tena.'),
-          _ => S.t('Could not sign in. Check your details and try again.', 'Imeshindikana kuingia. Angalia taarifa zako kisha jaribu tena.'),
-        };
-      });
+      final message = await _loginFailureMessage(error);
+      if (!mounted) return;
+      setState(() => _error = message);
+      showAppNotice(context, message, kind: AppNoticeKind.error);
     } catch (_) {
-      setState(() => _error = S.t('Could not sign in. Check your details and try again.', 'Imeshindikana kuingia. Angalia taarifa zako kisha jaribu tena.'));
+      final message = S.t('Could not sign in. Check your details and try again.', 'Imeshindikana kuingia. Angalia taarifa zako kisha jaribu tena.');
+      if (!mounted) return;
+      setState(() => _error = message);
+      showAppNotice(context, message, kind: AppNoticeKind.error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<String> _loginFailureMessage(FirebaseAuthException error) async {
+    final incorrect = S.t(
+      'The email or password is incorrect. Check both, then try again.',
+      'Barua pepe au nenosiri si sahihi. Angalia vyote, kisha jaribu tena.',
+    );
+    final notRegistered = S.t(
+      'This email is not registered. Ask your administrator to create a login for you.',
+      'Barua pepe hii haijasajiliwa. Mwambie admin akutengenezee login.',
+    );
+    final blob = '${error.code} ${error.message ?? ''}'.toUpperCase();
+    if (blob.contains('INVALID_EMAIL') || error.code == 'invalid-email') {
+      return S.t('Enter a valid email address.', 'Weka barua pepe sahihi.');
+    }
+    if (error.code == 'user-disabled') {
+      return S.t('This account is disabled. Contact your administrator.', 'Akaunti imefungwa. Wasiliana na admin.');
+    }
+    if (error.code == 'too-many-requests' || blob.contains('TOO_MANY_ATTEMPTS')) {
+      return S.t('Too many attempts. Please wait a moment and try again.', 'Majaribio mengi. Subiri kidogo kisha jaribu tena.');
+    }
+    if (error.code == 'network-request-failed') {
+      return S.t('Network error. Check your internet connection and try again.', 'Hitilafu ya mtandao. Angalia intaneti kisha jaribu tena.');
+    }
+    if (blob.contains('EMAIL_NOT_FOUND') || blob.contains('USER_NOT_FOUND') || error.code == 'user-not-found') {
+      return notRegistered;
+    }
+    if (blob.contains('INVALID_PASSWORD') || blob.contains('WRONG_PASSWORD') || error.code == 'wrong-password') {
+      return incorrect;
+    }
+    if (error.code == 'invalid-credential' || blob.contains('INVALID_LOGIN_CREDENTIALS')) {
+      final known = await AuthAccountService().emailHasLogin(_emailController.text);
+      return known == false ? notRegistered : incorrect;
+    }
+    return S.t('Could not sign in. Check your details and try again.', 'Imeshindikana kuingia. Angalia taarifa zako kisha jaribu tena.');
   }
 
   @override

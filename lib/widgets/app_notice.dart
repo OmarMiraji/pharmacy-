@@ -60,7 +60,11 @@ class _AppNoticeToastState extends State<_AppNoticeToast> with SingleTickerProvi
     super.initState();
     _motion = AnimationController(vsync: this, duration: const Duration(milliseconds: 140));
     _motion.forward();
-    final hold = widget.kind == AppNoticeKind.error ? 2200 : 1400;
+    final hold = switch (widget.kind) {
+      AppNoticeKind.error => 4200,
+      AppNoticeKind.warning => 4600,
+      _ => 1800,
+    };
     _hold = Timer(Duration(milliseconds: hold), _dismiss);
   }
 
@@ -122,10 +126,10 @@ class _AppNoticeToastState extends State<_AppNoticeToast> with SingleTickerProvi
                     Icon(icon, color: Colors.white, size: 18),
                     const SizedBox(width: 8),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 360),
+                      constraints: const BoxConstraints(maxWidth: 440),
                       child: Text(
                         widget.message,
-                        maxLines: 2,
+                        maxLines: 4,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
                       ),

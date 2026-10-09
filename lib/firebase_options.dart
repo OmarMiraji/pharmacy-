@@ -24,10 +24,7 @@ class DefaultFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       case TargetPlatform.iOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for ios - '
@@ -51,6 +48,14 @@ class DefaultFirebaseOptions {
         );
     }
   }
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyD-psaAvVt4pgEo-lfqKDuWGazGJSyp5T8',
+    appId: '1:433141635482:android:32ac2bb86439bb18c5c223',
+    messagingSenderId: '433141635482',
+    projectId: 'phyimacy-management-system',
+    storageBucket: 'phyimacy-management-system.firebasestorage.app',
+  );
 
   static const FirebaseOptions windows = FirebaseOptions(
     apiKey: 'AIzaSyA1qSPJz4YFFPjH5wfyQDyHdFISaX0SHQY',

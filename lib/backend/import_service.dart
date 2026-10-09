@@ -22,6 +22,8 @@ class MedicineImportRow {
     required this.requiresPrescription,
     this.minSaleQty = 0,
     this.openingAsTablets = true,
+    this.allowHalfBlister = false,
+    this.stockAs = 'tablets',
   });
 
   final String sku;
@@ -40,6 +42,8 @@ class MedicineImportRow {
   final bool requiresPrescription;
   final int minSaleQty;
   final bool openingAsTablets;
+  final bool allowHalfBlister;
+  final String stockAs;
 }
 
 class MedicineImportValidationResult {
@@ -90,6 +94,7 @@ class MedicineImportService {
     'pack_size',
     'min_sale_qty',
     'strip_size',
+    'allow_half_blister',
     'box_size',
     'opening_quantity',
     'expiry_date',
@@ -203,7 +208,8 @@ class MedicineImportService {
       final boxText = _col(data, ['box_size']);
       final rxText = _col(data, ['requires_prescription']);
       final minSaleText = _col(data, ['min_sale_qty']);
-      final stockAs = _col(data, ['stock_as']).toLowerCase();
+      final stockAsRaw = _col(data, ['stock_as']).toLowerCase();
+      final halfText = _col(data, ['allow_half_blister']).toLowerCase();
 
       if (sku.isEmpty) errors.add('sku');
       if (medicineName.isEmpty) errors.add('medicine_name');
@@ -223,7 +229,18 @@ class MedicineImportService {
       final boxSize = boxText.isEmpty ? 0 : _parseInt(boxText);
       final minSaleQty = minSaleText.isEmpty ? 0 : _parseInt(minSaleText);
       final pieceType = unit.toLowerCase() == 'tablet' || unit.toLowerCase() == 'capsule';
-      final openingAsTablets = pieceType && stockAs != 'packs' && stockAs != 'pack';
+      final asBlister = stockAsRaw == 'blister' || stockAsRaw == 'blisters' || stockAsRaw == 'blista';
+      final asPack = stockAsRaw == 'pack' || stockAsRaw == 'packs';
+      final asOne = stockAsRaw == 'one' || stockAsRaw == 'tablet';
+      final stockAs = asBlister
+          ? 'blisters'
+          : asPack
+              ? 'packs'
+              : asOne
+                  ? 'one'
+                  : 'tablets';
+      final openingAsTablets = pieceType && !asPack && !asBlister;
+      final allowHalf = halfText == '1' || halfText == 'yes' || halfText == 'true';
 
       if (parsedPack != null && parsedPack < 0) {
         errors.add('pack_size cannot be negative');
@@ -238,6 +255,10 @@ class MedicineImportService {
       if (sellingText.isNotEmpty && sellingPrice == null) errors.add('selling_price must be a TZS number');
       if (reorderText.isNotEmpty && reorderLevel == null) errors.add('reorder_level must be a whole number');
       if (openingText.isNotEmpty && openingQuantity == null) errors.add('opening_quantity must be a whole number');
+      if (asBlister && (stripSize ?? 0) < 2) errors.add('strip_size must be 2 or more when stock_as is blisters');
+      if (allowHalf && asBlister && (stripSize ?? 0) % 2 != 0) {
+        errors.add('strip_size must be an even number when allow_half_blister is yes');
+      }
       if (stripText.isNotEmpty && stripSize == null) errors.add('strip_size must be a whole number');
       if (boxText.isNotEmpty && boxSize == null) errors.add('box_size must be a whole number');
       if (minSaleText.isNotEmpty && minSaleQty == null) errors.add('min_sale_qty must be a whole number');
@@ -259,8 +280,8 @@ class MedicineImportService {
           medicineName: medicineName,
           category: category,
           unit: unit,
-          packSize: packSize,
-          stripSize: stripSize ?? 0,
+          packSize: asBlister ? 1 : packSize,
+          stripSize: asBlister ? (stripSize ?? 0) : (stripSize ?? 0),
           boxSize: boxSize ?? 0,
           buyingPriceMinor: buyingPrice ?? 0,
           sellingPriceMinor: sellingPrice ?? 0,
@@ -269,8 +290,10 @@ class MedicineImportService {
           expiryDate: expiryDate,
           batchNumber: batchNumber,
           requiresPrescription: rxText == '1' || rxText.toLowerCase() == 'yes' || rxText.toLowerCase() == 'true',
-          minSaleQty: minSaleQty ?? 0,
+          minSaleQty: asOne ? 1 : (minSaleQty ?? 0),
           openingAsTablets: openingAsTablets,
+          allowHalfBlister: asBlister && allowHalf,
+          stockAs: stockAs,
         ));
       } else {
         invalidRows.add(MedicineImportInvalidRow(rowNumber: i + 1, data: data, errors: errors));

@@ -350,11 +350,17 @@ class MedicineService {
           boxSize: int.tryParse('${row['box_size'] ?? '0'}'.trim()) ?? 0,
           minSaleQty: int.tryParse('${row['min_sale_qty'] ?? '0'}'.trim()) ?? 0,
           allowLooseSale: BaseUnits.sellsByPiece('${row['unit'] ?? 'Tablet'}'),
+          allowHalfBlister: () {
+            final half = '${row['allow_half_blister'] ?? ''}'.trim().toLowerCase();
+            return half == '1' || half == 'yes' || half == 'true';
+          }(),
           expiryDate: expiry,
           openingQuantity: openingQty,
-          openingAsTablets: BaseUnits.sellsByPiece('${row['unit'] ?? 'Tablet'}') &&
-              '${row['stock_as'] ?? ''}'.trim().toLowerCase() != 'packs' &&
-              '${row['stock_as'] ?? ''}'.trim().toLowerCase() != 'pack',
+          openingAsTablets: () {
+            final stockAs = '${row['stock_as'] ?? ''}'.trim().toLowerCase();
+            final packed = stockAs == 'packs' || stockAs == 'pack' || stockAs == 'blisters' || stockAs == 'blister' || stockAs == 'blista';
+            return BaseUnits.sellsByPiece('${row['unit'] ?? 'Tablet'}') && !packed;
+          }(),
           batchNumber: '${row['batch_number'] ?? ''}',
           createdBy: 'import',
         );
@@ -548,6 +554,7 @@ class MedicineService {
     int boxSize = 0,
     int minSaleQty = 0,
     bool allowLooseSale = false,
+    bool allowHalfBlister = false,
     DateTime? expiryDate,
     int openingQuantity = 0,
     bool openingAsTablets = true,
@@ -572,8 +579,14 @@ class MedicineService {
     final ref = _medicines.doc();
     final size = packSize < 1 ? 1 : packSize;
     final loose = BaseUnits.sellsByPiece(unit) || allowLooseSale;
-    final countOpeningAsTablets = openingAsTablets || !BaseUnits.sellsByPiece(unit) || size <= 1;
-    final stockQty = countOpeningAsTablets ? openingQuantity : openingQuantity * size;
+    final piece = BaseUnits.sellsByPiece(unit);
+    final blisterStock = piece && stripSize > 1 && size <= 1 && !openingAsTablets;
+    final packStock = piece && size > 1 && !openingAsTablets;
+    final stockQty = blisterStock
+        ? openingQuantity * stripSize
+        : packStock
+            ? openingQuantity * size
+            : openingQuantity;
     if (openingQuantity > 0 && expiryDate != null) {
       final code = (batchNumber ?? '').trim();
       final batchRef = _batches.doc();
@@ -596,6 +609,7 @@ class MedicineService {
           'boxSize': boxSize < 0 ? 0 : boxSize,
           'minSaleQty': minSaleQty < 0 ? 0 : minSaleQty,
           'allowLooseSale': loose,
+          'allowHalfBlister': allowHalfBlister && stripSize > 1,
           'expiryDate': Timestamp.fromDate(expiryDate),
           'createdAt': now,
           'updatedAt': now,
@@ -609,6 +623,7 @@ class MedicineService {
             unit: unit,
             purchasePriceMinor: purchasePriceMinor,
             packSize: size,
+            stripSize: stripSize,
             minSaleQty: minSaleQty,
           ),
           'isActive': true,
@@ -647,6 +662,7 @@ class MedicineService {
       'boxSize': boxSize < 0 ? 0 : boxSize,
       'minSaleQty': minSaleQty < 0 ? 0 : minSaleQty,
       'allowLooseSale': BaseUnits.sellsByPiece(unit) || allowLooseSale,
+      'allowHalfBlister': allowHalfBlister && stripSize > 1,
       if (expiryDate != null) 'expiryDate': Timestamp.fromDate(expiryDate),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -774,6 +790,7 @@ class MedicineService {
     int boxSize = 0,
     int minSaleQty = 0,
     bool allowLooseSale = false,
+    bool allowHalfBlister = false,
     DateTime? expiryDate,
   }) async {
     _tenant.assertWritable();
@@ -802,6 +819,7 @@ class MedicineService {
       'boxSize': boxSize < 0 ? 0 : boxSize,
       'minSaleQty': minSaleQty < 0 ? 0 : minSaleQty,
       'allowLooseSale': loose,
+      'allowHalfBlister': allowHalfBlister && stripSize > 1,
       if (expiryDate != null) 'expiryDate': Timestamp.fromDate(expiryDate),
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -894,6 +912,7 @@ class MedicineService {
             unit: medicineData['unit'] as String? ?? 'Tablet',
             purchasePriceMinor: (medicineData['purchasePriceMinor'] as num?)?.toInt() ?? 0,
             packSize: (medicineData['packSize'] as num?)?.toInt() ?? 1,
+            stripSize: (medicineData['stripSize'] as num?)?.toInt() ?? 0,
             minSaleQty: (medicineData['minSaleQty'] as num?)?.toInt() ?? 0,
           ),
           'isActive': true,
@@ -948,6 +967,7 @@ class MedicineService {
             unit: medicineData['unit'] as String? ?? 'Tablet',
             purchasePriceMinor: (medicineData['purchasePriceMinor'] as num?)?.toInt() ?? 0,
             packSize: (medicineData['packSize'] as num?)?.toInt() ?? 1,
+            stripSize: (medicineData['stripSize'] as num?)?.toInt() ?? 0,
             minSaleQty: (medicineData['minSaleQty'] as num?)?.toInt() ?? 0,
           ),
             'isActive': true,

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../l10n/app_locale.dart';
 import 'firestore_collections.dart';
 import 'pharmacy.dart';
 import 'tenant_context.dart';
@@ -42,6 +43,25 @@ class SubscriptionState {
   DateTime? get licenseEndsAt => expiresAt ?? trialEndsAt;
 
   int get daysRemaining => SubscriptionService.calendarDaysRemaining(licenseEndsAt);
+
+  /// Shown when the activation code has one or two days left.
+  String? get renewalNotice {
+    if (isBlocked || hasExpired) return null;
+    final days = daysRemaining;
+    if (days != 1 && days != 2) return null;
+    final end = licenseEndsAt;
+    final date = end == null ? '' : '${end.day}/${end.month}/${end.year}';
+    if (days == 1) {
+      return S.t(
+        'Your activation code expires tomorrow ($date). Renew today so the shop can keep selling.',
+        'Namba yako ya kuwezesha inaisha kesho ($date). Lipia leo ili duka liendelee kuuza.',
+      );
+    }
+    return S.t(
+      'Your activation code expires in 2 days ($date). Renew before that date so the shop is not locked.',
+      'Namba yako ya kuwezesha inaisha baada ya siku 2 ($date). Lipia kabla ya tarehe hiyo ili duka lisifungwe.',
+    );
+  }
 
   String get trialCountdownLabel {
     if (!isTrial) return '';

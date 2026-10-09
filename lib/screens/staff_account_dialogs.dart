@@ -644,7 +644,8 @@ Future<void> showEditShopDialog(BuildContext context, PharmacyRecord shop) async
         title: Text(S.t('Edit shop', 'Hariri duka')),
         content: SizedBox(
           width: 480,
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(controller: name, decoration: InputDecoration(labelText: S.t('Pharmacy name', 'Jina la duka'))),
@@ -667,6 +668,7 @@ Future<void> showEditShopDialog(BuildContext context, PharmacyRecord shop) async
               const SizedBox(height: 10),
               TextField(controller: note, maxLines: 2, decoration: InputDecoration(labelText: S.t('Notes', 'Maelezo'))),
             ],
+            ),
           ),
         ),
         actions: [

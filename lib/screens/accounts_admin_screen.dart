@@ -209,8 +209,8 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
                 const SizedBox(height: 12),
                 Text(selected.name, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
                 Text(
-                  'Pharmacy ID ${selected.id}\nAdmin ${selected.ownerEmail ?? 'not linked'}',
-                  style: const TextStyle(color: Color(0xff68807d), height: 1.4),
+                  'Pharmacy ID ${selected.id}\nAdmin ${selected.ownerEmail ?? 'not linked'}\n${S.t('Phone', 'Simu')}: ${(selected.phone ?? '').trim().isEmpty ? S.t('Not added yet', 'Haijawekwa') : selected.phone}\n${S.t('Address', 'Anwani')}: ${(selected.address ?? '').trim().isEmpty ? S.t('Not added yet', 'Haijawekwa') : selected.address}\n${S.t('Notes', 'Maelezo')}: ${(selected.note ?? '').trim().isEmpty ? S.t('Not added yet', 'Haijawekwa') : selected.note}',
+                  style: const TextStyle(color: Color(0xff68807d), height: 1.45),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(

@@ -55,11 +55,15 @@ abstract final class BaseUnits {
     required int purchasePriceMinor,
     int packSize = 1,
     int minSaleQty = 0,
+    int stripSize = 0,
   }) {
     if (purchasePriceMinor <= 0) return 0;
     final size = packSize < 1 ? 1 : packSize;
+    if (sellsByPiece(unit) && size <= 1 && stripSize > 1) {
+      return (purchasePriceMinor / stripSize).round();
+    }
     if (sellsByPiece(unit) && size <= 1) {
-      final lot = minSaleQty > 1 ? minSaleQty : 5;
+      final lot = minSaleQty >= 1 ? minSaleQty : 5;
       return (purchasePriceMinor / lot).round();
     }
     if (size > 1) return (purchasePriceMinor / size).round();

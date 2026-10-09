@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +16,7 @@ import 'backend/auth_service.dart';
 import 'backend/firestore_collections.dart';
 import 'backend/inventory_service.dart';
 import 'backend/login_log_service.dart';
+import 'mobile/mobile_shell.dart';
 import 'backend/medicine_service.dart';
 import 'backend/medicine_match.dart';
 import 'backend/models.dart';
@@ -297,7 +299,11 @@ class _ProfileLoaderState extends State<ProfileLoader> {
         if (!profile.isActive) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+        final onPhone = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
         if (profile.isSuperAdmin) {
+          if (onPhone) {
+            return MobileShell(profile: profile, authService: widget.authService);
+          }
           return SuperAdminHome(profile: profile, authService: widget.authService);
         }
         if (workspace?.blocked == true) {
@@ -314,6 +320,15 @@ class _ProfileLoaderState extends State<ProfileLoader> {
                   message: 'The free trial has ended. Activate a valid token after payment.',
                 ),
             onActivated: _reloadWorkspace,
+          );
+        }
+        if (onPhone) {
+          return MobileShell(
+            profile: profile,
+            authService: widget.authService,
+            license: workspace?.license,
+            readOnly: workspace?.readOnly == true,
+            onLicenseChanged: _reloadWorkspace,
           );
         }
         return DashboardScreen(
@@ -366,6 +381,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     unawaited(OfflineSyncService.instance.start());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notice = widget.license?.renewalNotice;
+      if (!mounted || notice == null) return;
+      showAppNotice(context, notice, kind: AppNoticeKind.warning);
+    });
     AppUpdateService().check().then((value) {
       if (mounted) setState(() => _appUpdate = value);
     }).catchError((_) {});
@@ -424,6 +444,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _DashboardDestination(id: 'purchases', label: S.t('Purchases', 'Manunuzi'), icon: Icons.shopping_cart_outlined),
         if (widget.profile.can('reports.view'))
           _DashboardDestination(id: 'reports', label: S.t('Reports', 'Ripoti'), icon: Icons.bar_chart_rounded),
+        if (widget.profile.role == 'admin')
+          _DashboardDestination(id: 'logins', label: S.t('Login logs', 'Muda wa kuingia'), icon: Icons.schedule_rounded),
         if (widget.profile.can('users.manage') || widget.profile.can('settings.manage') || widget.profile.isSuperAdmin)
           _DashboardDestination(id: 'settings', label: S.t('Settings', 'Mipangilio'), icon: Icons.settings_outlined),
         if (widget.profile.isSuperAdmin)
@@ -550,7 +572,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     );
                   },
                 ),
-                if (widget.license?.isTrial == true && widget.readOnly == false && widget.license?.isBlocked != true)
+                if (widget.license?.renewalNotice != null && widget.readOnly == false)
+                  Material(
+                    color: const Color(0xfffff4e5),
+                    child: ListTile(
+                      leading: const Icon(Icons.event_busy_rounded, color: Color(0xffb45309)),
+                      title: Text(S.t('Activation code is about to expire', 'Namba ya kuwezesha inakaribia kuisha')),
+                      subtitle: Text(widget.license!.renewalNotice!),
+                      trailing: FilledButton(
+                        onPressed: _openSubscribeDialog,
+                        child: Text(S.t('Renew now', 'Lipia sasa')),
+                      ),
+                    ),
+                  )
+                else if (widget.license?.isTrial == true && widget.readOnly == false && widget.license?.isBlocked != true)
                   Material(
                     color: const Color(0xfffff4e5),
                     child: ListTile(
@@ -624,6 +659,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return PurchasesScreen(profile: widget.profile);
       case 'reports':
         return const ReportsScreen();
+      case 'logins':
+        return LoginLogsScreen(pharmacyId: widget.profile.pharmacyId);
       case 'settings':
         return SettingsScreen(profile: widget.profile);
       case 'system':
@@ -2011,6 +2048,11 @@ class _SalesScreenState extends State<SalesScreen> {
                             'Price ${medicine.sellingPriceMinor} is for $lot ${medicine.baseLabel.toLowerCase()}s together. 10 = ${medicine.sellingPriceMinor} × 2.\nStock: ${medicine.stockLabel(available)}',
                             'Bei ${medicine.sellingPriceMinor} ni ya vidonge $lot pamoja. 10 = ${medicine.sellingPriceMinor} × 2.\nStock: ${medicine.stockLabel(available)}',
                           )
+                        : medicine.pricedByBlister
+                        ? S.t(
+                            'Sell a whole blister${medicine.sellsHalfBlister ? ', or half a blister' : ''}.\nStock: ${medicine.stockLabel(available)}',
+                            'Uza blista nzima${medicine.sellsHalfBlister ? ', au nusu blista' : ''}.\nStock: ${medicine.stockLabel(available)}',
+                          )
                         : units.length > 1
                         ? S.t(
                             'Stock is counted in ${medicine.baseLabel.toLowerCase()}s. Sell from ${medicine.effectiveMinSaleQty} ${medicine.baseLabel.toLowerCase()}s upward (or a whole pack).\nNow: ${medicine.stockLabel(available)}',
@@ -2059,7 +2101,9 @@ class _SalesScreenState extends State<SalesScreen> {
                                         : unit.id == 'box'
                                             ? S.t('Box (${unit.toBase})  -  TZS ${unit.unitPriceMinor}', 'Boksi (${unit.toBase})  -  TZS ${unit.unitPriceMinor}')
                                             : unit.id == 'strip'
-                                                ? S.t('Strip (${unit.toBase})  -  TZS ${unit.unitPriceMinor}', 'Strip (${unit.toBase})  -  TZS ${unit.unitPriceMinor}')
+                                                ? S.t('Blister (${unit.toBase} tablets)  -  TZS ${unit.unitPriceMinor}', 'Blista (vidonge ${unit.toBase})  -  TZS ${unit.unitPriceMinor}')
+                                                : unit.id == 'half'
+                                                ? S.t('Half blister (${unit.toBase} tablets)  -  TZS ${unit.unitPriceMinor}', 'Nusu blista (vidonge ${unit.toBase})  -  TZS ${unit.unitPriceMinor}')
                                                 : unit.id == 'lot'
                                                     ? S.t('$lot ${medicine.baseLabel.toLowerCase()}s together  -  TZS ${unit.unitPriceMinor}', 'Vidonge $lot pamoja  -  TZS ${unit.unitPriceMinor}')
                                                     : S.t('${unit.label}  -  TZS ${unit.unitPriceMinor} each', '${unit.label}  -  TZS ${unit.unitPriceMinor} moja'),
@@ -3731,9 +3775,10 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
                   'unit': row.unit,
                   'pack_size': row.packSize.toString(),
                   'strip_size': row.stripSize.toString(),
+                  'allow_half_blister': row.allowHalfBlister ? 'yes' : '',
                   'box_size': row.boxSize.toString(),
                   'min_sale_qty': row.minSaleQty.toString(),
-                  'stock_as': row.openingAsTablets ? 'tablets' : 'packs',
+                  'stock_as': row.stockAs,
                   'buying_price': row.buyingPriceMinor.toString(),
                   'selling_price': row.sellingPriceMinor.toString(),
                   'reorder_level': row.reorderLevel.toString(),
@@ -3927,7 +3972,7 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
             const Text('Optional columns', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xff183b3b))),
             const SizedBox(height: 8),
             const Text(
-              'Leave blank if not needed. For tablets, stock_as = tablets (count) or packs. min_sale_qty defaults to 5 for tablets. Liquids stay whole items.',
+              'stock_as is one, tablets, packs, or blisters. For blisters, strip_size is tablets in one blister. allow_half_blister = yes sells half a blister. Liquids stay whole items.',
               style: TextStyle(color: Color(0xff68807d)),
             ),
             const SizedBox(height: 12),
@@ -5088,13 +5133,19 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     final purchasePrice = TextEditingController(text: medicine == null ? '' : '${medicine.purchasePriceMinor}');
     final sellingPrice = TextEditingController(text: medicine == null ? '' : '${medicine.sellingPriceMinor}');
     final reorderLevel = TextEditingController(text: medicine == null ? '10' : '${medicine.reorderLevel}');
-    var stockByTabletsPreview = medicine == null
-        ? true
-        : medicine.canSellPiecesByType && medicine.packSize <= 1;
+    final tabletModePreview = medicine == null || !medicine.canSellPiecesByType
+        ? 'one'
+        : medicine.stripSize > 1 && medicine.packSize <= 1
+            ? 'blister'
+            : medicine.packSize > 1
+                ? 'pack'
+                : medicine.minSaleQty == 1
+                    ? 'one'
+                    : 'count';
     final openingQty = TextEditingController(
       text: medicine == null
           ? ''
-          : '${stockByTabletsPreview || medicine.packSize <= 1 || !medicine.canSellPiecesByType ? medicine.quantityOnHand : medicine.quantityOnHand ~/ medicine.piecesPerPack}',
+          : '${tabletModePreview == 'pack' && medicine.piecesPerPack > 1 ? medicine.quantityOnHand ~/ medicine.piecesPerPack : tabletModePreview == 'blister' && medicine.stripSize > 1 ? medicine.quantityOnHand ~/ medicine.stripSize : medicine.quantityOnHand}',
     );
     final batchNumber = TextEditingController();
     final packSize = TextEditingController(text: medicine == null ? '1' : '${medicine.packSize}');
@@ -5106,11 +5157,11 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
           : '${medicine.effectiveMinSaleQty}',
     );
     String? selectedCategoryId = medicine?.categoryId;
+    final categoryQuery = TextEditingController();
     var prescription = medicine?.requiresPrescription ?? false;
     var baseUnit = BaseUnits.normalize(medicine?.unit ?? 'Tablet');
-    var stockByTablets = medicine == null
-        ? true
-        : medicine.canSellPiecesByType && medicine.packSize <= 1;
+    var tabletMode = tabletModePreview;
+    var allowHalf = medicine?.allowHalfBlister ?? false;
     DateTime? expiryDate = medicine?.expiryDate?.toDate();
     final formScroll = ScrollController();
     final nameFocus = FocusNode();
@@ -5208,8 +5259,8 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         decoration: InputDecoration(
                           labelText: S.t('This is a', 'Hii ni'),
                           helperText: S.t(
-                            'Tablet or capsule: sell from 5 pieces. Bottle/syrup: whole item only.',
-                            'Kidonge: uza kuanzia vidonge 5. Chupa/maji: kipande kizima tu.',
+                            'Tablets can be entered one by one, by count, by blister, or by pack.',
+                            'Vidonge vinaweza kuingizwa kimoja, kwa idadi, kwa blista, au kwa pakiti.',
                           ),
                           prefixIcon: const Icon(Icons.inventory_2_outlined, size: 19),
                         ),
@@ -5218,10 +5269,14 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           baseUnit = value ?? baseUnit;
                           unit.text = baseUnit;
                           if (BaseUnits.sellsByPiece(baseUnit)) {
-                            if (stockByTablets) packSize.text = '1';
-                            if ((int.tryParse(minSaleQty.text) ?? 0) < 1) minSaleQty.text = '5';
+                            if (tabletMode == 'one') {
+                              packSize.text = '1';
+                              minSaleQty.text = '1';
+                            } else if (tabletMode == 'count' && (int.tryParse(minSaleQty.text) ?? 0) < 2) {
+                              minSaleQty.text = '5';
+                            }
                           } else {
-                            stockByTablets = false;
+                            tabletMode = 'one';
                             packSize.text = '1';
                           }
                         }),
@@ -5262,22 +5317,63 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               ],
                             );
                           } else {
-                            final items = categories
-                                .map((category) => DropdownMenuItem<String>(
-                                      value: category.id,
-                                      child: Text(category.name),
-                                    ))
-                                .toList();
-                            content = DropdownButtonFormField<String>(
-                              focusNode: categoryFocus,
-                              initialValue: selectedCategoryId == null || !items.any((item) => item.value == selectedCategoryId) ? null : selectedCategoryId,
-                              items: items,
-                              onChanged: (value) => setDialogState(() => selectedCategoryId = value),
-                              decoration: InputDecoration(
-                                labelText: S.t('Category', 'Kundi'),
-                                prefixIcon: const Icon(Icons.category_outlined),
-                              ),
-                              validator: (value) => value == null || value.isEmpty ? S.t('Select a category', 'Chagua kundi') : null,
+                            final query = categoryQuery.text.trim().toLowerCase();
+                            final filtered = categories.where((category) => query.isEmpty || category.name.toLowerCase().contains(query)).toList();
+                            final selectedName = categories.where((category) => category.id == selectedCategoryId).map((category) => category.name).firstOrNull;
+                            content = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                TextField(
+                                  focusNode: categoryFocus,
+                                  controller: categoryQuery,
+                                  onChanged: (_) => setDialogState(() {}),
+                                  decoration: InputDecoration(
+                                    labelText: S.t('Search category', 'Tafuta kundi'),
+                                    hintText: S.t('Type part of the category name', 'Andika sehemu ya jina la kundi'),
+                                    prefixIcon: const Icon(Icons.search_rounded),
+                                    suffixIcon: query.isEmpty
+                                        ? null
+                                        : IconButton(
+                                            onPressed: () => setDialogState(() => categoryQuery.clear()),
+                                            icon: const Icon(Icons.close_rounded),
+                                          ),
+                                  ),
+                                ),
+                                if (selectedName != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    S.t('Selected: $selectedName', 'Imechaguliwa: $selectedName'),
+                                    style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff0f766e)),
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: const Color(0xffd7e7e4)),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: SizedBox(
+                                    height: filtered.isEmpty ? 52 : (filtered.length.clamp(1, 4) * 48.0),
+                                    child: filtered.isEmpty
+                                        ? Center(child: Text(S.t('No category matches that search.', 'Hakuna kundi linalofanana na utafutaji huo.'), style: const TextStyle(color: Color(0xff68807d))))
+                                        : ListView.builder(
+                                            itemCount: filtered.length,
+                                            itemBuilder: (context, index) {
+                                              final category = filtered[index];
+                                              final picked = category.id == selectedCategoryId;
+                                              return ListTile(
+                                                dense: true,
+                                                selected: picked,
+                                                selectedTileColor: const Color(0xffdff7ee),
+                                                leading: Icon(picked ? Icons.radio_button_checked : Icons.radio_button_off, color: const Color(0xff0f766e), size: 20),
+                                                title: Text(category.name, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
+                                                onTap: () => setDialogState(() => selectedCategoryId = category.id),
+                                              );
+                                            },
+                                          ),
+                                  ),
+                                ),
+                              ],
                             );
                           }
 
@@ -5310,38 +5406,91 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       if (BaseUnits.sellsByPiece(baseUnit)) ...[
                         Text(S.t('How do you want to enter stock?', 'Unataka kuingiza stock vipi?'), style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
                         const SizedBox(height: 8),
-                        SegmentedButton<bool>(
-                          segments: [
-                            ButtonSegment(
-                              value: true,
-                              label: Text(S.t('By tablet count', 'Kwa idadi ya vidonge')),
-                              icon: const Icon(Icons.medication_outlined, size: 18),
-                            ),
-                            ButtonSegment(
-                              value: false,
-                              label: Text(S.t('By pack', 'Kwa pakiti')),
-                              icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                            ),
-                          ],
-                          selected: {stockByTablets},
-                          onSelectionChanged: (value) => setDialogState(() {
-                            final next = value.first;
-                            final current = int.tryParse(openingQty.text.trim());
-                            final size = int.tryParse(packSize.text.trim()) ?? 1;
-                            if (editing && current != null && current >= 0) {
-                              if (stockByTablets && !next && size > 1) {
-                                openingQty.text = '${current ~/ size}';
-                              } else if (!stockByTablets && next && size > 1) {
-                                openingQty.text = '${current * size}';
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final cardWidth = (constraints.maxWidth - 8) / 2;
+                            int sizeOf(String mode) {
+                              if (mode == 'pack') {
+                                final n = int.tryParse(packSize.text.trim()) ?? 1;
+                                return n > 1 ? n : 1;
                               }
+                              if (mode == 'blister') {
+                                final n = int.tryParse(stripSize.text.trim()) ?? 1;
+                                return n > 1 ? n : 1;
+                              }
+                              return 1;
                             }
-                            stockByTablets = next;
-                            if (stockByTablets) {
-                              packSize.text = '1';
-                            } else if ((int.tryParse(packSize.text) ?? 1) <= 1) {
-                              packSize.text = '10';
-                            }
-                          }),
+                            final choices = <(String, IconData, String, String)>[
+                              ('one', Icons.looks_one_rounded, S.t('One tablet', 'Kidonge kimoja'), S.t('Price and stock for a single tablet', 'Bei na stock ya kidonge kimoja')),
+                              ('count', Icons.filter_5_rounded, S.t('By tablet count', 'Kwa idadi ya vidonge'), S.t('Several tablets sold together', 'Vidonge kadhaa vinauzwa pamoja')),
+                              ('blister', Icons.view_week_outlined, S.t('By blister', 'Kwa blista'), S.t('A blister inside the pack', 'Blista iliyo ndani ya pakiti')),
+                              ('pack', Icons.inventory_2_outlined, S.t('By pack', 'Kwa pakiti'), S.t('A whole pack, one tablet can leave it', 'Pakiti nzima, kidonge kimoja kinaweza kutoka')),
+                            ];
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final choice in choices)
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: Material(
+                                      color: tabletMode == choice.$1 ? const Color(0xffdff7ee) : const Color(0xfff4f7f6),
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(14),
+                                        onTap: () => setDialogState(() {
+                                          final next = choice.$1;
+                                          if (next == 'blister' && (int.tryParse(stripSize.text.trim()) ?? 0) < 2) stripSize.text = '10';
+                                          if (next == 'pack' && (int.tryParse(packSize.text.trim()) ?? 1) <= 1) packSize.text = '10';
+                                          final current = int.tryParse(openingQty.text.trim());
+                                          if (current != null && current >= 0) {
+                                            final tablets = current * sizeOf(tabletMode);
+                                            final nextSize = sizeOf(next);
+                                            openingQty.text = nextSize > 1 ? '${tablets ~/ nextSize}' : '$tablets';
+                                          }
+                                          tabletMode = next;
+                                          if (next == 'one') {
+                                            packSize.text = '1';
+                                            minSaleQty.text = '1';
+                                            allowHalf = false;
+                                          } else if (next == 'count') {
+                                            packSize.text = '1';
+                                            allowHalf = false;
+                                            if ((int.tryParse(minSaleQty.text) ?? 0) < 2) minSaleQty.text = '5';
+                                          } else if (next == 'pack') {
+                                            minSaleQty.text = '1';
+                                            allowHalf = false;
+                                          } else {
+                                            packSize.text = '1';
+                                            minSaleQty.text = '1';
+                                          }
+                                        }),
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Icon(tabletMode == choice.$1 ? Icons.radio_button_checked : Icons.radio_button_off, color: const Color(0xff0f766e), size: 18),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(choice.$3, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
+                                                    const SizedBox(height: 2),
+                                                    Text(choice.$4, style: const TextStyle(fontSize: 11, height: 1.3, color: Color(0xff68807d))),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -5349,8 +5498,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         Expanded(
                           child: _numberField(
                             purchasePrice,
-                            BaseUnits.sellsByPiece(baseUnit) && stockByTablets
+                            tabletMode == 'one'
+                                ? S.t('Buying price of one tablet (TZS)', 'Bei ya kununua ya kidonge kimoja (TZS)')
+                                : tabletMode == 'count'
                                 ? S.t('Buying price of ${int.tryParse(minSaleQty.text.trim()) ?? 5} tablets (TZS)', 'Bei ya kununua ya vidonge ${int.tryParse(minSaleQty.text.trim()) ?? 5} (TZS)')
+                                : tabletMode == 'blister'
+                                ? S.t('Buying price of one blister (TZS)', 'Bei ya kununua ya blista moja (TZS)')
                                 : BaseUnits.sellsByPiece(baseUnit)
                                     ? S.t('Buying price of one pack (TZS)', 'Bei ya kununua ya pakiti moja (TZS)')
                                     : S.t('Buying price of one item (TZS)', 'Bei ya kununua ya kipande kimoja (TZS)'),
@@ -5371,8 +5524,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             onFieldSubmitted: (_) => saveHold?.call(),
                             onChanged: (_) => setDialogState(() {}),
                             decoration: InputDecoration(
-                              labelText: BaseUnits.sellsByPiece(baseUnit) && stockByTablets
+                              labelText: tabletMode == 'one'
+                                  ? S.t('Selling price of one tablet (TZS)', 'Bei ya kuuza ya kidonge kimoja (TZS)')
+                                  : tabletMode == 'count'
                                   ? S.t('Selling price of ${int.tryParse(minSaleQty.text.trim()) ?? 5} tablets (TZS)', 'Bei ya kuuza ya vidonge ${int.tryParse(minSaleQty.text.trim()) ?? 5} (TZS)')
+                                  : tabletMode == 'blister'
+                                  ? S.t('Selling price of one blister (TZS)', 'Bei ya kuuza ya blista moja (TZS)')
                                   : BaseUnits.sellsByPiece(baseUnit)
                                       ? S.t('Selling price of one pack (TZS)', 'Bei ya kuuza ya pakiti moja (TZS)')
                                       : S.t('Selling price of one item (TZS)', 'Bei ya kuuza ya kipande kimoja (TZS)'),
@@ -5384,10 +5541,17 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       ]),
                       const SizedBox(height: 6),
                       Text(
-                        BaseUnits.sellsByPiece(baseUnit) && stockByTablets
+                        tabletMode == 'one'
+                            ? S.t('80 means one tablet. Three tablets = 240.', '80 ni kidonge kimoja. Vidonge vitatu = 240.')
+                            : tabletMode == 'count'
                             ? S.t(
                                 '400 means those ${int.tryParse(minSaleQty.text.trim()) ?? 5} tablets together. 10 tablets = 400 × 2 = 800.',
                                 '400 ni bei ya vidonge ${int.tryParse(minSaleQty.text.trim()) ?? 5} pamoja. Vidonge 10 = 400 × 2 = 800.',
+                              )
+                            : tabletMode == 'blister'
+                            ? S.t(
+                                '1000 is one blister. Half a blister is half of that price.',
+                                '1000 ni blista moja. Nusu blista ni nusu ya bei hiyo.',
                               )
                             : BaseUnits.sellsByPiece(baseUnit)
                                 ? S.t(
@@ -5409,10 +5573,12 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         textInputAction: TextInputAction.done,
                         onFieldSubmitted: (_) => saveHold?.call(),
                         decoration: InputDecoration(
-                          labelText: BaseUnits.sellsByPiece(baseUnit) && stockByTablets
-                              ? S.t('Units in stock now (tablets)', 'Idadi iliyopo sasa (vidonge)')
+                          labelText: tabletMode == 'pack'
+                              ? S.t('Units in stock now (packs)', 'Idadi iliyopo sasa (pakiti)')
+                              : tabletMode == 'blister'
+                              ? S.t('Units in stock now (blisters)', 'Idadi iliyopo sasa (blista)')
                               : BaseUnits.sellsByPiece(baseUnit)
-                                  ? S.t('Units in stock now (packs)', 'Idadi iliyopo sasa (pakiti)')
+                                  ? S.t('Units in stock now (tablets)', 'Idadi iliyopo sasa (vidonge)')
                                   : S.t('Units in stock now', 'Idadi iliyopo sasa'),
                           helperText: editing
                               ? S.t('This is the real quantity on the shelf. Change it if the count is wrong.', 'Hii ndiyo idadi halisi rafuni. Badilisha kama hesabu si sahihi.')
@@ -5435,7 +5601,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       ],
                       const SizedBox(height: 10),
                       _numberField(reorderLevel, S.t('Alert me when stock reaches', 'Niarifu stock ikifika'), icon: Icons.warning_amber_rounded, focusNode: reorderFocus, fieldKey: reorderKey, onSubmit: () => saveHold?.call()),
-                      if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets) ...[
+                      if (tabletMode == 'pack') ...[
                         const SizedBox(height: 10),
                         TextFormField(
                           key: packKey,
@@ -5456,7 +5622,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           },
                         ),
                       ],
-                      if (BaseUnits.sellsByPiece(baseUnit)) ...[
+                      if (tabletMode == 'count') ...[
                         const SizedBox(height: 10),
                         TextFormField(
                           key: minSaleKey,
@@ -5473,26 +5639,58 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           ),
                           validator: (value) {
                             final parsed = int.tryParse(value ?? '');
-                            if (parsed == null || parsed < 1) return S.t('Enter 1 or more', 'Weka 1 au zaidi');
+                            if (parsed == null || parsed < 2) return S.t('Enter 2 or more', 'Weka 2 au zaidi');
                             return null;
                           },
                         ),
                         const SizedBox(height: 6),
                         Text(
                           S.t(
-                            'Syrups and other liquids are sold whole. Only tablets/capsules can be sold from 5 pieces.',
-                            'Dawa za maji zinauzwa zima. Vidonge/capsule tu ndivyo vinavyouzwa kuanzia 5.',
+                            'Bottles and syrups are still sold whole. This number is only for tablets sold together.',
+                            'Chupa na dawa za maji bado zinauzwa zima. Namba hii ni ya vidonge vinavyouzwa pamoja tu.',
                           ),
                           style: const TextStyle(color: Color(0xff0f766e), height: 1.35),
                         ),
                       ],
-                      if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets) ...[
+                      if (tabletMode == 'blister') ...[
                         const SizedBox(height: 10),
-                        Row(children: [
-                          Expanded(child: TextFormField(controller: stripSize, keyboardType: TextInputType.number, textInputAction: TextInputAction.done, onFieldSubmitted: (_) => saveHold?.call(), decoration: InputDecoration(labelText: S.t('Strip size (optional)', 'Ukubwa wa strip (si lazima)'), helperText: S.t('e.g. 10', 'mf. 10'), prefixIcon: const Icon(Icons.view_week_outlined, size: 19)))),
-                          const SizedBox(width: 12),
-                          Expanded(child: TextFormField(controller: boxSize, keyboardType: TextInputType.number, textInputAction: TextInputAction.done, onFieldSubmitted: (_) => saveHold?.call(), decoration: InputDecoration(labelText: S.t('Box size (optional)', 'Ukubwa wa boksi (si lazima)'), helperText: S.t('e.g. 100', 'mf. 100'), prefixIcon: const Icon(Icons.inventory_outlined, size: 19)))),
-                        ]),
+                        TextFormField(
+                          controller: stripSize,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => saveHold?.call(),
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: InputDecoration(
+                            labelText: S.t('Tablets in one blister', 'Vidonge kwenye blista moja'),
+                            helperText: S.t('For example 10. This is the blister inside a pack.', 'Kwa mfano 10. Hii ndiyo blista iliyo ndani ya pakiti.'),
+                            prefixIcon: const Icon(Icons.view_week_outlined, size: 19),
+                          ),
+                          validator: (value) {
+                            final parsed = int.tryParse(value ?? '');
+                            if (parsed == null || parsed < 2) return S.t('Enter 2 or more', 'Weka 2 au zaidi');
+                            if (allowHalf && parsed.isOdd) return S.t('Use an even number to sell half a blister', 'Weka namba shufwa ili kuuza nusu blista');
+                            return null;
+                          },
+                        ),
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: allowHalf,
+                          onChanged: (value) => setDialogState(() => allowHalf = value ?? false),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(S.t('Also sell half a blister', 'Uza pia nusu blista')),
+                          subtitle: Text(
+                            () {
+                              final tablets = int.tryParse(stripSize.text.trim()) ?? 0;
+                              if (!allowHalf) {
+                                return S.t('Turn this on if customers can buy half a blister.', 'Washa hii ikiwa mteja anaweza kununua nusu blista.');
+                              }
+                              if (tablets >= 2 && tablets.isEven) {
+                                return S.t('Half blister = ${tablets ~/ 2} tablets, at half the blister price.', 'Nusu blista = vidonge ${tablets ~/ 2}, kwa nusu ya bei ya blista.');
+                              }
+                              return S.t('Enter an even number of tablets, for example 10.', 'Weka idadi shufwa ya vidonge, kwa mfano 10.');
+                            }(),
+                          ),
+                        ),
                       ],
                       const SizedBox(height: 10),
                       _FormSectionLabel(S.t('Expiry', 'Kuisha')),
@@ -5566,14 +5764,18 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           missing = S.t('Stock alert number is required.', 'Namba ya tahadhari ya stock inahitajika.');
                           focus = reorderFocus;
                           anchor = reorderKey;
-                        } else if (BaseUnits.sellsByPiece(baseUnit) && !stockByTablets && ((int.tryParse(packSize.text.trim()) ?? 0) < 2)) {
+                        } else if (tabletMode == 'pack' && ((int.tryParse(packSize.text.trim()) ?? 0) < 2)) {
                           missing = S.t('Enter how many tablets are in one pack.', 'Weka vidonge vingapi kwenye pakiti moja.');
                           focus = packFocus;
                           anchor = packKey;
-                        } else if (BaseUnits.sellsByPiece(baseUnit) && ((int.tryParse(minSaleQty.text.trim()) ?? 0) < 1)) {
+                        } else if (tabletMode == 'count' && ((int.tryParse(minSaleQty.text.trim()) ?? 0) < 2)) {
                           missing = S.t('Enter how many tablets are sold together.', 'Weka vidonge vingapi vinauzwa pamoja.');
                           focus = minSaleFocus;
                           anchor = minSaleKey;
+                        } else if (tabletMode == 'blister' && ((int.tryParse(stripSize.text.trim()) ?? 0) < 2)) {
+                          missing = S.t('Enter how many tablets are in one blister.', 'Weka vidonge vingapi kwenye blista moja.');
+                        } else if (tabletMode == 'blister' && allowHalf && ((int.tryParse(stripSize.text.trim()) ?? 0) % 2 != 0)) {
+                          missing = S.t('A half blister needs an even number of tablets, for example 10.', 'Nusu blista inahitaji idadi shufwa ya vidonge, kwa mfano 10.');
                         } else if ((int.tryParse(openingQty.text.trim()) ?? 0) > 0 && expiryDate == null) {
                           missing = S.t('Expiry date is required when stock is more than 0.', 'Tarehe ya kuisha inahitajika stock ikiwa zaidi ya 0.');
                           expiryMissing = true;
@@ -5597,12 +5799,17 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                         formBanner = null;
                         final qty = int.tryParse(openingQty.text.trim()) ?? 0;
                         try {
-                          final parsedPack = BaseUnits.sellsByPiece(baseUnit)
-                              ? (stockByTablets ? 1 : int.parse(packSize.text))
-                              : 1;
-                          final parsedMin = BaseUnits.sellsByPiece(baseUnit)
-                              ? (int.tryParse(minSaleQty.text.trim()) ?? 5)
-                              : 0;
+                          final pieceSale = BaseUnits.sellsByPiece(baseUnit);
+                          final parsedPack = pieceSale && tabletMode == 'pack' ? int.parse(packSize.text) : 1;
+                          final parsedStrip = pieceSale && tabletMode == 'blister' ? int.parse(stripSize.text.trim()) : 0;
+                          final parsedMin = !pieceSale
+                              ? 0
+                              : tabletMode == 'count'
+                                  ? int.parse(minSaleQty.text.trim())
+                                  : 1;
+                          final fromPack = pieceSale && tabletMode == 'pack';
+                          final fromBlister = pieceSale && tabletMode == 'blister';
+                          final stockFactor = fromBlister ? parsedStrip : parsedPack;
                           if (editing) {
                             await service.updateMedicine(
                               medicineId: medicine.id,
@@ -5615,15 +5822,16 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               reorderLevel: int.parse(reorderLevel.text),
                               requiresPrescription: prescription,
                               packSize: parsedPack,
-                              stripSize: stockByTablets ? 0 : int.tryParse(stripSize.text.trim()) ?? 0,
-                              boxSize: stockByTablets ? 0 : int.tryParse(boxSize.text.trim()) ?? 0,
+                              stripSize: parsedStrip,
+                              boxSize: 0,
                               minSaleQty: parsedMin,
                               allowLooseSale: BaseUnits.sellsByPiece(baseUnit),
+                              allowHalfBlister: fromBlister && allowHalf,
                               expiryDate: expiryDate,
                             );
                             final enteredStock = int.tryParse(openingQty.text.trim());
                             if (enteredStock != null) {
-                              final nextQty = stockByTablets || !BaseUnits.sellsByPiece(baseUnit) ? enteredStock : enteredStock * parsedPack;
+                              final nextQty = (fromPack || fromBlister) ? enteredStock * stockFactor : enteredStock;
                               await service.setOnHandQuantity(
                                 medicineId: medicine.id,
                                 quantity: nextQty,
@@ -5643,13 +5851,14 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                               reorderLevel: int.parse(reorderLevel.text),
                               requiresPrescription: prescription,
                               packSize: parsedPack,
-                              stripSize: stockByTablets ? 0 : int.tryParse(stripSize.text.trim()) ?? 0,
-                              boxSize: stockByTablets ? 0 : int.tryParse(boxSize.text.trim()) ?? 0,
+                              stripSize: parsedStrip,
+                              boxSize: 0,
                               minSaleQty: parsedMin,
                               allowLooseSale: BaseUnits.sellsByPiece(baseUnit),
+                              allowHalfBlister: fromBlister && allowHalf,
                               expiryDate: expiryDate,
                               openingQuantity: qty,
-                              openingAsTablets: stockByTablets || !BaseUnits.sellsByPiece(baseUnit),
+                              openingAsTablets: !(fromPack || fromBlister),
                               batchNumber: batchNumber.text,
                               createdBy: userId,
                             );
@@ -5707,6 +5916,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     stripSize.dispose();
     boxSize.dispose();
     minSaleQty.dispose();
+    categoryQuery.dispose();
   }
 
   Future<bool> _showAddCategoryDialog(BuildContext context, MedicineService service) async {

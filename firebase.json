@@ -12,6 +12,7 @@
         "lib/firebase_options.dart": {
           "projectId": "phyimacy-management-system",
           "configurations": {
+            "android": "1:433141635482:android:32ac2bb86439bb18c5c223",
             "windows": "1:433141635482:web:d24507df5629fc30c5c223"
           }
         }
