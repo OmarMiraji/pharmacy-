@@ -439,7 +439,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _DashboardDestination(id: 'overview', label: S.t('Overview', 'Muhtasari'), icon: Icons.grid_view_rounded),
         if (widget.profile.can('medicines.view') || widget.profile.can('inventory.view'))
           _DashboardDestination(id: 'medicines', label: S.t('Medicines', 'Dawa'), icon: Icons.medication_outlined),
-        if (widget.profile.can('sales.view'))
+        if (widget.profile.can('sales.view') || widget.profile.can(AppPermissions.salesRecords))
           _DashboardDestination(id: 'sales', label: S.t('Sales', 'Mauzo'), icon: Icons.point_of_sale_outlined),
         if (widget.profile.can('purchases.view') || widget.profile.can('suppliers.manage'))
           _DashboardDestination(id: 'purchases', label: S.t('Purchases', 'Manunuzi'), icon: Icons.shopping_cart_outlined),
@@ -1738,7 +1738,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   bool _onSaleEnter(KeyEvent event) {
-    if (_salesPanel != 0) return false;
+    if (_salesPanel != 0 || !widget.profile.can('sales.view')) return false;
     if (event is! KeyDownEvent) return false;
     final key = event.logicalKey;
     if (key != LogicalKeyboardKey.enter && key != LogicalKeyboardKey.numpadEnter) return false;
@@ -1807,6 +1807,8 @@ class _SalesScreenState extends State<SalesScreen> {
     });
   }
 
+  bool get _canSeeSaleRecords => widget.profile.can(AppPermissions.salesRecords);
+
   Widget _salesModeTabs() {
     return _WorkspaceTabs(
       labels: [S.t('Sell', 'Uza'), S.t('Sale records', 'Kumbukumbu za mauzo')],
@@ -1816,8 +1818,19 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
+  Widget _saleRecordsPage() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+      child: SalesLedgerScreen(profile: widget.profile),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final records = _canSeeSaleRecords;
+    final sell = widget.profile.can('sales.view');
+    if (records && !sell) return _saleRecordsPage();
+    if (!records) return _buildCounter();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1827,12 +1840,7 @@ class _SalesScreenState extends State<SalesScreen> {
         ),
         const SizedBox(height: 8),
         Expanded(
-          child: _salesPanel == 1
-              ? Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-                  child: SalesLedgerScreen(profile: widget.profile),
-                )
-              : _buildCounter(),
+          child: _salesPanel == 1 ? _saleRecordsPage() : _buildCounter(),
         ),
       ],
     );

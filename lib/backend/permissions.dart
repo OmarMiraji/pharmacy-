@@ -10,6 +10,7 @@ abstract final class AppPermissions {
   static const salesCreate = 'sales.create';
   static const salesDiscount = 'sales.discount';
   static const salesRefund = 'sales.refund';
+  static const salesRecords = 'sales.records';
   static const purchasesView = 'purchases.view';
   static const purchasesCreate = 'purchases.create';
   static const purchasesReceive = 'purchases.receive';
@@ -42,6 +43,7 @@ abstract final class AppPermissions {
     salesCreate,
     salesDiscount,
     salesRefund,
+    salesRecords,
     purchasesView,
     purchasesCreate,
     purchasesReceive,
@@ -85,6 +87,7 @@ abstract final class AppPermissions {
       salesCreate: true,
       salesDiscount: true,
       salesRefund: true,
+      salesRecords: true,
       purchasesView: true,
       purchasesCreate: true,
       purchasesReceive: true,
@@ -116,6 +119,7 @@ abstract final class AppPermissions {
       salesCreate: true,
       salesDiscount: true,
       salesRefund: true,
+      salesRecords: true,
       purchasesView: true,
       purchasesCreate: true,
       purchasesReceive: true,
@@ -200,6 +204,7 @@ abstract final class AppPermissions {
         salesCreate => 'Complete sales',
         salesDiscount => 'Apply discounts',
         salesRefund => 'Refund sales',
+        salesRecords => 'View sale records',
         purchasesView => 'View purchases',
         purchasesCreate => 'Record purchases',
         purchasesReceive => 'Receive incoming stock',
@@ -233,6 +238,7 @@ abstract final class AppPermissions {
         salesCreate => 'Kamilisha mauzo',
         salesDiscount => 'Weka punguzo',
         salesRefund => 'Rudisha mauzo',
+        salesRecords => 'Ona kumbukumbu za mauzo',
         purchasesView => 'Ona manunuzi',
         purchasesCreate => 'Rekodi manunuzi',
         purchasesReceive => 'Pokea stock inayoingia',

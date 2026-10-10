@@ -514,9 +514,14 @@ service cloud.firestore {
         );
       allow update: if false;
       allow delete: if isSuperAdmin() || (
-        isShopAdminActor()
-        && tenantId() != null
-        && resource.data.pharmacyId == tenantId()
+        tenantId() != null
+        && (firestoreRole() == 'admin' || isShopAdminActor())
+        && (
+          !('pharmacyId' in resource.data)
+          || resource.data.pharmacyId == null
+          || resource.data.pharmacyId == ''
+          || resource.data.pharmacyId == tenantId()
+        )
       );
     }
 
