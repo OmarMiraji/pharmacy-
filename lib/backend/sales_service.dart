@@ -88,7 +88,7 @@ class SaleRecord {
     required this.itemNames,
     this.createdAt,
     this.voidedAt,
-    this.voidedByName,
+    this.voidedByName = '',
   });
 
   final String id;
