@@ -74,6 +74,77 @@ class SaleCartItem {
   }
 }
 
+class SaleRecord {
+  const SaleRecord({
+    required this.id,
+    required this.receiptNumber,
+    required this.status,
+    required this.paymentMethod,
+    required this.subtotalMinor,
+    required this.discountMinor,
+    required this.totalMinor,
+    required this.soldBy,
+    required this.soldByName,
+    required this.itemNames,
+    this.createdAt,
+    this.voidedAt,
+    this.voidedByName,
+  });
+
+  final String id;
+  final String receiptNumber;
+  final String status;
+  final String paymentMethod;
+  final int subtotalMinor;
+  final int discountMinor;
+  final int totalMinor;
+  final String soldBy;
+  final String soldByName;
+  final List<String> itemNames;
+  final DateTime? createdAt;
+  final DateTime? voidedAt;
+  final String voidedByName;
+
+  bool get isVoided => status == 'voided' || status == 'refunded';
+
+  factory SaleRecord.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    DateTime? dateOf(Object? value) => value is Timestamp ? value.toDate() : null;
+    final receipt = (data['receiptNumber'] as String?)?.trim() ?? '';
+    return SaleRecord(
+      id: doc.id,
+      receiptNumber: receipt.isEmpty ? doc.id : receipt,
+      status: (data['status'] as String?) ?? 'completed',
+      paymentMethod: (data['paymentMethod'] as String?) ?? 'cash',
+      subtotalMinor: (data['subtotalMinor'] as num?)?.toInt() ?? (data['totalMinor'] as num?)?.toInt() ?? 0,
+      discountMinor: (data['discountMinor'] as num?)?.toInt() ?? 0,
+      totalMinor: (data['totalMinor'] as num?)?.toInt() ?? 0,
+      soldBy: (data['soldBy'] as String?) ?? '',
+      soldByName: (data['soldByName'] as String?) ?? '',
+      itemNames: ((data['itemNames'] as List?) ?? const []).whereType<String>().where((name) => name.trim().isNotEmpty).toList(),
+      createdAt: dateOf(data['createdAt']),
+      voidedAt: dateOf(data['voidedAt']),
+      voidedByName: (data['voidedByName'] as String?) ?? '',
+    );
+  }
+}
+
+class SaleLine {
+  const SaleLine({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.unitPriceMinor,
+    required this.totalMinor,
+  });
+
+  final String name;
+  final int quantity;
+  final String unit;
+  final int unitPriceMinor;
+  final int totalMinor;
+}
+
 class SalesService {
   SalesService({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -99,20 +170,46 @@ class SalesService {
     }
   }
 
-  Future<void> voidSale(String saleId) async {
+  Stream<List<SaleRecord>> watchSales() {
+    return TenantContext.instance.scoped(_firestore.collection(FirestoreCollections.sales)).snapshots().map((snapshot) {
+      final rows = snapshot.docs.map(SaleRecord.fromDoc).toList();
+      rows.sort((a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
+      return rows;
+    });
+  }
+
+  Future<List<SaleLine>> saleLines(String saleId) async {
+    final snapshot = await _firestore.collection(FirestoreCollections.sales).doc(saleId).collection(FirestoreCollections.saleItems).get();
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      final soldQty = (data['soldQty'] as num?)?.toInt();
+      return SaleLine(
+        name: (data['medicineName'] as String?) ?? '',
+        quantity: soldQty ?? (data['quantity'] as num?)?.toInt() ?? 0,
+        unit: (data['soldUnit'] as String?) ?? '',
+        unitPriceMinor: (data['unitPriceMinor'] as num?)?.toInt() ?? 0,
+        totalMinor: (data['totalMinor'] as num?)?.toInt() ?? 0,
+      );
+    }).toList();
+  }
+
+  Future<void> voidSale(String saleId, {String voidedBy = '', String voidedByName = ''}) async {
     TenantContext.instance.assertWritable();
     final saleRef = _firestore.collection(FirestoreCollections.sales).doc(saleId);
     final itemsQuery = saleRef.collection(FirestoreCollections.saleItems);
     final loaded = await Future.wait<Object>([
       saleRef.get(),
       itemsQuery.get(),
+      _firestore.collection(FirestoreCollections.stockMovements).where('referenceId', isEqualTo: saleId).get(),
     ]);
     final saleDoc = loaded[0] as DocumentSnapshot<Map<String, dynamic>>;
     if (!saleDoc.exists) return;
     final saleData = saleDoc.data() ?? const <String, dynamic>{};
-    if ((saleData['status'] as String?) == 'voided') return;
+    final status = (saleData['status'] as String?) ?? 'completed';
+    if (status == 'voided' || status == 'refunded') return;
 
     final itemSnapshots = loaded[1] as QuerySnapshot<Map<String, dynamic>>;
+    final movementSnapshots = loaded[2] as QuerySnapshot<Map<String, dynamic>>;
     final restoreByMedicine = <String, int>{};
     final names = <String, String?>{};
     for (final item in itemSnapshots.docs) {
@@ -123,13 +220,26 @@ class SalesService {
       restoreByMedicine[medicineId] = (restoreByMedicine[medicineId] ?? 0) + quantity;
       names[medicineId] = data['medicineName'] as String?;
     }
+    final restoreByBatch = <String, int>{};
+    for (final move in movementSnapshots.docs) {
+      final data = move.data();
+      if ((data['type'] as String?) != 'sale') continue;
+      final batchId = (data['batchId'] as String?)?.trim() ?? '';
+      final change = (data['quantityChange'] as num?)?.toInt() ?? 0;
+      if (batchId.isEmpty || change >= 0) continue;
+      restoreByBatch[batchId] = (restoreByBatch[batchId] ?? 0) + change.abs();
+    }
 
     final now = FieldValue.serverTimestamp();
     await _firestore.runTransaction((transaction) async {
       final medicineRefs = [
         for (final id in restoreByMedicine.keys) _firestore.collection(FirestoreCollections.medicines).doc(id),
       ];
+      final batchRefs = [
+        for (final id in restoreByBatch.keys) _firestore.collection(FirestoreCollections.medicineBatches).doc(id),
+      ];
       final medicineSnaps = await Future.wait(medicineRefs.map(transaction.get));
+      final batchSnaps = await Future.wait(batchRefs.map(transaction.get));
       for (var i = 0; i < medicineRefs.length; i++) {
         final snap = medicineSnaps[i];
         if (!snap.exists) continue;
@@ -140,9 +250,22 @@ class SalesService {
           'updatedAt': now,
         });
       }
+      for (var i = 0; i < batchRefs.length; i++) {
+        final snap = batchSnaps[i];
+        if (!snap.exists) continue;
+        final id = batchRefs[i].id;
+        final current = (snap.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
+        transaction.update(batchRefs[i], {
+          'quantityOnHand': current + restoreByBatch[id]!,
+          'isActive': true,
+          'updatedAt': now,
+        });
+      }
       transaction.update(saleRef, {
         'status': 'voided',
         'voidedAt': now,
+        'voidedBy': voidedBy.trim(),
+        'voidedByName': voidedByName.trim(),
         'updatedAt': now,
       });
     });
@@ -155,7 +278,7 @@ class SalesService {
           type: 'sale_void',
           quantityChange: entry.value,
           referenceId: saleId,
-          createdBy: 'system',
+          createdBy: voidedBy.trim().isEmpty ? 'system' : voidedBy.trim(),
         ));
       }
       await writes.commit();
@@ -168,6 +291,7 @@ class SalesService {
     required String paymentMethod,
     int discountMinor = 0,
     String? customerId,
+    String? soldByName,
     UserProfile? actor,
   }) async {
     TenantContext.instance.assertWritable();
@@ -284,6 +408,7 @@ class SalesService {
         'taxMinor': 0,
         'totalMinor': subtotalMinor - discountMinor,
         'soldBy': soldBy.trim(),
+        'soldByName': (soldByName ?? actor?.displayName ?? '').trim(),
         'itemNames': [for (final item in items) item.medicineName],
         'createdAt': serverNow,
         'updatedAt': serverNow,

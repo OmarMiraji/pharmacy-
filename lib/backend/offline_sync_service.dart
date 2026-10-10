@@ -19,6 +19,7 @@ class PendingSale {
     required this.id,
     required this.pharmacyId,
     required this.soldBy,
+    this.soldByName = '',
     required this.paymentMethod,
     required this.discountMinor,
     required this.items,
@@ -30,6 +31,7 @@ class PendingSale {
   final String id;
   final String pharmacyId;
   final String soldBy;
+  final String soldByName;
   final String paymentMethod;
   final int discountMinor;
   final List<SaleCartItem> items;
@@ -41,6 +43,7 @@ class PendingSale {
         'id': id,
         'pharmacyId': pharmacyId,
         'soldBy': soldBy,
+        'soldByName': soldByName,
         'paymentMethod': paymentMethod,
         'discountMinor': discountMinor,
         'createdAt': createdAt.toIso8601String(),
@@ -54,6 +57,7 @@ class PendingSale {
       id: json['id'] as String? ?? '',
       pharmacyId: json['pharmacyId'] as String? ?? '',
       soldBy: json['soldBy'] as String? ?? '',
+      soldByName: json['soldByName'] as String? ?? '',
       paymentMethod: json['paymentMethod'] as String? ?? 'cash',
       discountMinor: (json['discountMinor'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
@@ -176,6 +180,7 @@ class OfflineSyncService extends ChangeNotifier {
   Future<String> completeSale({
     required List<SaleCartItem> items,
     required String soldBy,
+    String? soldByName,
     required String paymentMethod,
     int discountMinor = 0,
     String? customerId,
@@ -187,6 +192,7 @@ class OfflineSyncService extends ChangeNotifier {
         return await _sales.completeSale(
           items: items,
           soldBy: soldBy,
+          soldByName: (soldByName ?? actor?.displayName ?? '').trim(),
           paymentMethod: paymentMethod,
           discountMinor: discountMinor,
           customerId: customerId,
@@ -202,6 +208,7 @@ class OfflineSyncService extends ChangeNotifier {
       id: 'L-${DateTime.now().millisecondsSinceEpoch}',
       pharmacyId: TenantContext.instance.requirePharmacyId(),
       soldBy: soldBy,
+      soldByName: (soldByName ?? actor?.displayName ?? '').trim(),
       paymentMethod: paymentMethod,
       discountMinor: discountMinor,
       items: items,
@@ -244,12 +251,13 @@ class OfflineSyncService extends ChangeNotifier {
           await _sales.completeSale(
             items: sale.items,
             soldBy: sale.soldBy,
+            soldByName: sale.soldByName,
             paymentMethod: sale.paymentMethod,
             discountMinor: sale.discountMinor,
             actor: UserProfile(
               id: sale.soldBy,
               employeeCode: '',
-              displayName: '',
+              displayName: sale.soldByName,
               email: '',
               role: sale.actorRole ?? 'cashier',
               permissions: AppPermissions.resolvedPermissions(sale.actorRole ?? 'cashier'),
@@ -268,6 +276,7 @@ class OfflineSyncService extends ChangeNotifier {
               id: sale.id,
               pharmacyId: sale.pharmacyId,
               soldBy: sale.soldBy,
+              soldByName: sale.soldByName,
               paymentMethod: sale.paymentMethod,
               discountMinor: sale.discountMinor,
               items: sale.items,

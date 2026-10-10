@@ -21,8 +21,8 @@ class InventoryService {
     String? purchaseId,
   }) async {
     TenantContext.instance.assertWritable();
-    if (medicineId.isEmpty || batchNumber.trim().isEmpty) {
-      throw ArgumentError('Medicine and batch number are required.');
+    if (medicineId.isEmpty) {
+      throw ArgumentError('Medicine is required.');
     }
     if (quantity <= 0) {
       throw ArgumentError.value(quantity, 'quantity', 'Must be greater than zero.');
@@ -31,8 +31,10 @@ class InventoryService {
       throw ArgumentError.value(unitCostMinor, 'unitCostMinor', 'Cost cannot be negative.');
     }
 
-    final normalizedBatch = batchNumber.trim();
     final expiry = expiryDate.toDate();
+    final month = expiry.month.toString().padLeft(2, '0');
+    final day = expiry.day.toString().padLeft(2, '0');
+    final normalizedBatch = batchNumber.trim().isEmpty ? 'STOCK-${expiry.year}$month$day' : batchNumber.trim();
     if (expiry.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
       throw ArgumentError('Expiry date cannot be in the past.');
     }

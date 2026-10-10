@@ -1029,12 +1029,15 @@ class MedicineService {
     String? purchaseId,
   }) async {
     _tenant.assertWritable();
-    if (batchNumber.trim().isEmpty || quantity <= 0 || unitCostMinor < 0) {
-      throw ArgumentError('Batch number, positive quantity, and valid cost are required.');
+    if (quantity <= 0 || unitCostMinor < 0) {
+      throw ArgumentError('Positive quantity and a valid cost are required.');
     }
+    final month = expiryDate.month.toString().padLeft(2, '0');
+    final day = expiryDate.day.toString().padLeft(2, '0');
+    final code = batchNumber.trim().isEmpty ? 'STOCK-${expiryDate.year}$month$day' : batchNumber.trim();
     await _batches.add(_tenant.withTenant({
       'medicineId': medicineId,
-      'batchNumber': batchNumber.trim(),
+      'batchNumber': code,
       'expiryDate': Timestamp.fromDate(expiryDate),
       'quantityOnHand': quantity,
       'unitCostMinor': unitCostMinor,

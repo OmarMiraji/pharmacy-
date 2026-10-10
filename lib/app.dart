@@ -53,6 +53,7 @@ import 'screens/password_security.dart';
 import 'screens/staff_account_dialogs.dart';
 import 'screens/chat_assistant_panel.dart';
 import 'screens/login_logs_screen.dart';
+import 'screens/sales_ledger_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/inventory_screen.dart';
@@ -660,7 +661,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'reports':
         return const ReportsScreen();
       case 'logins':
-        return LoginLogsScreen(pharmacyId: widget.profile.pharmacyId);
+        return LoginLogsScreen(pharmacyId: widget.profile.pharmacyId, canDelete: true);
       case 'settings':
         return SettingsScreen(profile: widget.profile);
       case 'system':
@@ -1148,17 +1149,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
     }
   }
 
-  Future<void> _voidSale(_RecentSaleEntry sale) async {
-    try {
-      await SalesService().voidSale(sale.id);
-      if (!mounted) return;
-      showAppNotice(context, S.t('Sale voided. Stock put back.', 'Mauzo yamefutwa. Stock imerudishwa.'));
-      await _refresh();
-    } catch (error) {
-      if (mounted) showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_OverviewData>(
@@ -1399,32 +1389,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
               _OverviewPanel(
                 title: S.t('Recent sales activity', 'Mauzo ya hivi karibuni'),
                 icon: Icons.receipt_long_rounded,
-                trailing: widget.profile.can('sales.refund')
-                    ? TextButton.icon(
-                        onPressed: () async {
-                          if (summary.recentSales.isEmpty) return;
-                          final firstSale = summary.recentSales.first;
-                          final shouldVoid = await showDialog<bool>(
-                            context: context,
-                            builder: (dialogContext) => AlertDialog(
-                              title: const Text('Void sale?'),
-                              content: Text(
-                                'Reverse ${firstSale.receiptNumber}?\n${firstSale.medicinesLabel}\nStock for these medicines will be restored.',
-                              ),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-                                FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Void sale')),
-                              ],
-                            ),
-                          );
-                          if (shouldVoid == true && mounted) {
-                            await _voidSale(firstSale);
-                          }
-                        },
-                        icon: const Icon(Icons.undo_rounded),
-                        label: const Text('Void latest'),
-                      )
-                    : null,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1461,26 +1425,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text('TZS ${sale.totalMinor}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xff183b3b))),
-                                if (widget.profile.can('sales.refund'))
-                                  TextButton(
-                                    onPressed: () async {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (dialogContext) => AlertDialog(
-                                          title: const Text('Confirm void'),
-                                          content: Text('Reverse ${sale.receiptNumber}?\n${sale.medicinesLabel}'),
-                                          actions: [
-                                            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-                                            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Yes, void')),
-                                          ],
-                                        ),
-                                      );
-                                      if (confirm == true && mounted) {
-                                        await _voidSale(sale);
-                                      }
-                                    },
-                                    child: const Text('Void'),
-                                  ),
                               ],
                             ),
                           )),
@@ -1785,6 +1729,7 @@ class _SalesScreenState extends State<SalesScreen> {
   final _searchController = TextEditingController();
   final _discountController = TextEditingController(text: '0');
   bool _saleFromEnter = false;
+  int _salesPanel = 0;
 
   @override
   void initState() {
@@ -1793,6 +1738,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   bool _onSaleEnter(KeyEvent event) {
+    if (_salesPanel != 0) return false;
     if (event is! KeyDownEvent) return false;
     final key = event.logicalKey;
     if (key != LogicalKeyboardKey.enter && key != LogicalKeyboardKey.numpadEnter) return false;
@@ -1861,8 +1807,38 @@ class _SalesScreenState extends State<SalesScreen> {
     });
   }
 
+  Widget _salesModeTabs() {
+    return _WorkspaceTabs(
+      labels: [S.t('Sell', 'Uza'), S.t('Sale records', 'Kumbukumbu za mauzo')],
+      icons: const [Icons.point_of_sale_outlined, Icons.receipt_long_rounded],
+      index: _salesPanel,
+      onChanged: (value) => setState(() => _salesPanel = value),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+          child: _salesModeTabs(),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: _salesPanel == 1
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+                  child: SalesLedgerScreen(profile: widget.profile),
+                )
+              : _buildCounter(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCounter() {
     return StreamBuilder<List<Medicine>>(
       stream: MedicineService().watchMedicines(),
       builder: (context, snapshot) {
@@ -2400,7 +2376,7 @@ class _SalesScreenState extends State<SalesScreen> {
     setState(() { _checkingOut = true; _message = null; });
     try {
       final cashier = printedByName(widget.profile);
-      final receiptNumber = await OfflineSyncService.instance.completeSale(items: _cart.values.toList(), soldBy: user.uid, paymentMethod: _paymentMethod, discountMinor: appliedDiscount, actor: widget.profile);
+      final receiptNumber = await OfflineSyncService.instance.completeSale(items: _cart.values.toList(), soldBy: user.uid, soldByName: cashier, paymentMethod: _paymentMethod, discountMinor: appliedDiscount, actor: widget.profile);
       final receipt = ReceiptSummary(
         receiptNumber: receiptNumber,
         soldBy: cashier,
@@ -3213,11 +3189,14 @@ class _EmptyPurchaseState extends StatelessWidget {
               child: const Icon(Icons.shopping_cart_outlined, size: 32, color: Color(0xffc2410c)),
             ),
             const SizedBox(height: 16),
-            Text('No purchases yet', style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
+            Text(S.t('No purchases yet', 'Bado hakuna manunuzi'), style: GoogleFonts.playfairDisplay(fontSize: 22, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
             const SizedBox(height: 8),
-            const Text(
-              'Add a supplier, then tap Receive purchase. Search an existing medicine or tap New if it is not on the list.',
-              style: TextStyle(color: Color(0xff68807d)),
+            Text(
+              S.t(
+                'Tap Receive purchase. Search an existing medicine or tap New if it is not on the list. A supplier is optional.',
+                'Bofya Pokea ununuzi. Tafuta dawa iliyopo au bofya Mpya ikiwa haipo. Msambazaji si lazima.',
+              ),
+              style: const TextStyle(color: Color(0xff68807d)),
               textAlign: TextAlign.center,
             ),
           ],
@@ -3271,7 +3250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final selectedContent = switch (_selected) {
       'printer' => const PrinterSettingsScreen(),
       'team' => TeamAccessScreen(profile: widget.profile),
-      'attendance' => LoginLogsScreen(pharmacyId: widget.profile.pharmacyId),
+      'attendance' => LoginLogsScreen(pharmacyId: widget.profile.pharmacyId, canDelete: true),
       'pharmacies' => AccountsAdminScreen(profile: widget.profile),
       'licenses' => SubscriptionAdminScreen(profile: widget.profile),
       'updates' => AppUpdateScreen(profile: widget.profile),
@@ -6042,7 +6021,10 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _requiredField(batchNumber, 'Batch number'),
+                TextFormField(
+                  controller: batchNumber,
+                  decoration: InputDecoration(labelText: S.t('Batch number (optional)', 'Namba ya batch (si lazima)')),
+                ),
                 _numberField(quantity, medicine.piecesPerPack > 1 ? 'Packs' : 'Quantity'),
                 _numberField(cost, 'Unit cost (minor units)'),
                 ListTile(

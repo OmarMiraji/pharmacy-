@@ -263,7 +263,7 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
       case 'audit':
         return const AuditLogsScreen();
       case 'logins':
-        return const LoginLogsScreen();
+        return LoginLogsScreen(excludeActorUid: widget.profile.id, canDelete: true);
       case 'security':
         return const SecurityCenterScreen();
       case 'updates':

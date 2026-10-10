@@ -494,7 +494,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w800, color: PhyimacyBrand.teal),
                     ),
                     const SizedBox(height: 22),
-                    TextFormField(controller: batch, decoration: const InputDecoration(labelText: 'Batch number', prefixIcon: Icon(Icons.qr_code_2_rounded)), validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null),
+                    TextFormField(controller: batch, decoration: InputDecoration(labelText: S.t('Batch number (optional)', 'Namba ya batch (si lazima)'), prefixIcon: const Icon(Icons.qr_code_2_rounded))),
                     const SizedBox(height: 10),
                     Row(children: [
                       Expanded(child: TextFormField(controller: quantity, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: medicine.piecesPerPack > 1 ? 'Packs received' : 'Quantity', prefixIcon: const Icon(Icons.inventory_2_outlined)), validator: (value) => int.tryParse(value ?? '') == null ? 'Enter a whole number' : null)),

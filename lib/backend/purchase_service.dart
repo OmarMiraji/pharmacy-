@@ -66,19 +66,25 @@ class PurchaseService {
 
   Future<String> receivePurchase({required String supplierId, required String medicineId, required String batchNumber, required DateTime expiryDate, required int quantity, required int unitCostMinor, required String createdBy, String? invoiceNumber}) async {
     TenantContext.instance.assertWritable();
-    if (supplierId.isEmpty || medicineId.isEmpty || batchNumber.trim().isEmpty || quantity <= 0 || unitCostMinor < 0) {
-      throw ArgumentError('Supplier, medicine, batch, quantity, and cost are required.');
+    final shopSupplier = supplierId.trim();
+    if (medicineId.isEmpty || quantity <= 0 || unitCostMinor < 0) {
+      throw ArgumentError('Medicine, quantity, and cost are required.');
     }
-    final normalizedBatch = batchNumber.trim();
+    final month = expiryDate.month.toString().padLeft(2, '0');
+    final day = expiryDate.day.toString().padLeft(2, '0');
+    final normalizedBatch = batchNumber.trim().isEmpty ? 'STOCK-${expiryDate.year}$month$day' : batchNumber.trim();
+    final invoice = invoiceNumber?.trim() ?? '';
     if (expiryDate.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
       throw ArgumentError('Expiry date cannot be in the past.');
     }
 
     String? supplierName;
-    try {
-      final supplierSnap = await _suppliers.doc(supplierId).get();
-      supplierName = supplierSnap.data()?['name'] as String?;
-    } catch (_) {}
+    if (shopSupplier.isNotEmpty) {
+      try {
+        final supplierSnap = await _suppliers.doc(shopSupplier).get();
+        supplierName = supplierSnap.data()?['name'] as String?;
+      } catch (_) {}
+    }
 
     final existingBatchQuery = await TenantContext.instance
         .scoped(_firestore.collection(FirestoreCollections.medicineBatches))
@@ -120,10 +126,16 @@ class PurchaseService {
       }
       final now = FieldValue.serverTimestamp();
       medicineName = (medicineData['name'] as String?) ?? '';
+      final medicinePatch = <String, dynamic>{
+        'quantityOnHand': currentStock + stockQty,
+        'purchasePriceMinor': unitCostMinor,
+        'updatedAt': now,
+      };
+      if (shopSupplier.isNotEmpty) medicinePatch['supplierId'] = shopSupplier;
       transaction.set(purchaseRef, TenantContext.instance.withTenant({
-        'supplierId': supplierId,
+        'supplierId': shopSupplier.isEmpty ? null : shopSupplier,
         'supplierName': supplierName,
-        'invoiceNumber': invoiceNumber?.trim(),
+        'invoiceNumber': invoice.isEmpty ? null : invoice,
         'status': 'received',
         'subtotalMinor': total,
         'taxMinor': 0,
@@ -145,12 +157,7 @@ class PurchaseService {
         'batchNumber': normalizedBatch,
         'expiryDate': Timestamp.fromDate(expiryDate),
       }));
-      transaction.update(medicineRef, {
-        'quantityOnHand': currentStock + stockQty,
-        'purchasePriceMinor': unitCostMinor,
-        'supplierId': supplierId,
-        'updatedAt': now,
-      });
+      transaction.update(medicineRef, medicinePatch);
       if (existingBatchRef != null) {
         transaction.update(existingBatchRef, {
           'quantityOnHand': batchQty + stockQty,
@@ -166,7 +173,7 @@ class PurchaseService {
           'expiryDate': Timestamp.fromDate(expiryDate),
           'quantityOnHand': stockQty,
           'unitCostMinor': unitCostMinor,
-          'supplierId': supplierId,
+          'supplierId': shopSupplier.isEmpty ? null : shopSupplier,
           'purchaseId': purchaseRef.id,
           'isActive': true,
           'createdAt': now,

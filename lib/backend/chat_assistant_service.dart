@@ -107,7 +107,10 @@ class ChatAssistantService {
           .toList();
 
       final now = DateTime.now();
-      final sales = [...results[2].docs]..sort((a, b) {
+      final sales = [...results[2].docs.where((doc) {
+        final status = (doc.data()['status'] as String?) ?? 'completed';
+        return status != 'voided' && status != 'refunded';
+      })]..sort((a, b) {
           final left = _asDate(a.data()['createdAt']) ?? DateTime.fromMillisecondsSinceEpoch(0);
           final right = _asDate(b.data()['createdAt']) ?? DateTime.fromMillisecondsSinceEpoch(0);
           return right.compareTo(left);

@@ -58,9 +58,21 @@ class LoginLogService {
   final FirebaseAuth _auth;
   static _OpenSession? _open;
 
+  static bool tracksRole(String role) {
+    switch (role.trim().toLowerCase()) {
+      case 'admin':
+      case 'pharmacist':
+      case 'cashier':
+      case 'storekeeper':
+        return true;
+      default:
+        return false;
+    }
+  }
+
   Future<void> recordLogin(UserProfile profile) async {
     final user = _auth.currentUser;
-    if (user == null || _open?.uid == user.uid) return;
+    if (user == null || _open?.uid == user.uid || !tracksRole(profile.role)) return;
     final session = _OpenSession(
       uid: user.uid,
       email: (user.email ?? profile.email).trim(),
@@ -96,12 +108,14 @@ class LoginLogService {
       pharmacyName = (shop.data()?['name'] as String?)?.trim() ?? '';
     }
     final name = (data['displayName'] as String?)?.trim() ?? '';
+    final role = (data['role'] as String?)?.trim() ?? '';
+    if (!tracksRole(role)) return;
     await _add(
       _OpenSession(
         uid: user.uid,
         email: (user.email ?? (data['email'] as String?) ?? '').trim(),
         name: name,
-        role: (data['role'] as String?)?.trim() ?? '',
+        role: role,
         pharmacyId: pharmacyId,
         pharmacyName: pharmacyName,
       ),
@@ -131,6 +145,36 @@ class LoginLogService {
         );
       }).toList();
     });
+  }
+
+  Future<void> deleteByIds(Iterable<String> ids) async {
+    final list = ids.where((id) => id.trim().isNotEmpty).toList();
+    for (var start = 0; start < list.length; start += 400) {
+      final end = start + 400 > list.length ? list.length : start + 400;
+      final batch = _firestore.batch();
+      for (final id in list.sublist(start, end)) {
+        batch.delete(_firestore.collection(FirestoreCollections.loginSessions).doc(id));
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> deleteAll({String? pharmacyId}) async {
+    Query<Map<String, dynamic>> query = _firestore.collection(FirestoreCollections.loginSessions);
+    final shopId = pharmacyId?.trim() ?? '';
+    if (shopId.isNotEmpty) {
+      query = query.where('pharmacyId', isEqualTo: shopId);
+    }
+    while (true) {
+      final snapshot = await query.limit(400).get();
+      if (snapshot.docs.isEmpty) return;
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      if (snapshot.docs.length < 400) return;
+    }
   }
 
   Future<void> _add(_OpenSession session, String event) async {

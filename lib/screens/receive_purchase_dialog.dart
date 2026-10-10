@@ -66,10 +66,6 @@ class _ReceivePurchaseFormState extends State<_ReceivePurchaseForm> {
     final amount = int.tryParse(_quantity.text);
     final unitCost = int.tryParse(_cost.text);
     if (user == null || amount == null || unitCost == null || amount <= 0 || unitCost < 0) return;
-    if (_supplierId == null || _supplierId!.isEmpty) {
-      showAppNotice(context, S.t('Select a supplier', 'Chagua msambazaji'), kind: AppNoticeKind.warning);
-      return;
-    }
     if (!_addingNew && _selected == null) {
       showAppNotice(context, S.t('Select a medicine or tap New', 'Chagua dawa au bofya Mpya'), kind: AppNoticeKind.warning);
       return;
@@ -98,7 +94,7 @@ class _ReceivePurchaseFormState extends State<_ReceivePurchaseForm> {
         }
       }
       await widget.service.receivePurchase(
-        supplierId: _supplierId!,
+        supplierId: _supplierId ?? '',
         medicineId: medicineId,
         batchNumber: _batch.text,
         expiryDate: _expiry,
@@ -138,13 +134,6 @@ class _ReceivePurchaseFormState extends State<_ReceivePurchaseForm> {
           stream: widget.service.watchSuppliers(),
           builder: (context, supplierSnapshot) {
             final suppliers = supplierSnapshot.data ?? const <SupplierOption>[];
-            if (_supplierId == null && suppliers.isNotEmpty) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && _supplierId == null && suppliers.isNotEmpty) {
-                  setState(() => _supplierId = suppliers.first.id);
-                }
-              });
-            }
             return StreamBuilder<List<Medicine>>(
               stream: MedicineService().watchMedicines(),
               builder: (context, medicineSnapshot) {
@@ -167,19 +156,18 @@ class _ReceivePurchaseFormState extends State<_ReceivePurchaseForm> {
                           style: const TextStyle(color: Color(0xff68807d), height: 1.35, fontSize: 13),
                         ),
                         const SizedBox(height: 16),
-                        if (suppliers.isEmpty)
-                          Text(
-                            S.t('Add a supplier first from this page.', 'Ongeza msambazaji kwanza kutoka ukurasa huu.'),
-                            style: const TextStyle(color: Color(0xffc2410c), fontWeight: FontWeight.w700),
-                          )
-                        else
+                        if (suppliers.isNotEmpty) ...[
                           DropdownButtonFormField<String>(
-                            initialValue: suppliers.any((item) => item.id == _supplierId) ? _supplierId : suppliers.first.id,
-                            decoration: _field(S.t('Supplier', 'Msambazaji')),
-                            items: [for (final supplier in suppliers) DropdownMenuItem(value: supplier.id, child: Text(supplier.name))],
-                            onChanged: (value) => setState(() => _supplierId = value ?? _supplierId),
+                            initialValue: suppliers.any((item) => item.id == _supplierId) ? _supplierId : '',
+                            decoration: _field(S.t('Supplier (optional)', 'Msambazaji (si lazima)')),
+                            items: [
+                              DropdownMenuItem(value: '', child: Text(S.t('No supplier', 'Bila msambazaji'))),
+                              for (final supplier in suppliers) DropdownMenuItem(value: supplier.id, child: Text(supplier.name)),
+                            ],
+                            onChanged: (value) => setState(() => _supplierId = value ?? ''),
                           ),
-                        const SizedBox(height: 12),
+                          const SizedBox(height: 12),
+                        ],
                         if (!_addingNew) ...[
                           TextField(
                             controller: _search,
@@ -306,11 +294,7 @@ class _ReceivePurchaseFormState extends State<_ReceivePurchaseForm> {
                         const SizedBox(height: 8),
                         TextField(controller: _invoice, decoration: _field(S.t('Invoice (optional)', 'Ankara (si lazima)'))),
                         const SizedBox(height: 10),
-                        TextFormField(
-                          controller: _batch,
-                          decoration: _field(S.t('Batch number', 'Namba ya batch')),
-                          validator: (value) => value == null || value.trim().isEmpty ? S.t('Required', 'Inahitajika') : null,
-                        ),
+                        TextField(controller: _batch, decoration: _field(S.t('Batch number (optional)', 'Namba ya batch (si lazima)'))),
                         const SizedBox(height: 10),
                         Row(
                           children: [
@@ -356,7 +340,7 @@ class _ReceivePurchaseFormState extends State<_ReceivePurchaseForm> {
                             TextButton(onPressed: () => Navigator.pop(context), child: Text(S.t('Cancel', 'Ghairi'))),
                             const SizedBox(width: 8),
                             FilledButton(
-                              onPressed: _busy || suppliers.isEmpty ? null : _submit,
+                              onPressed: _busy ? null : _submit,
                               child: Text(_busy ? S.t('Saving...', 'Inahifadhi...') : S.t('Receive stock', 'Pokea stock')),
                             ),
                           ],

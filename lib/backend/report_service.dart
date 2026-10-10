@@ -100,7 +100,8 @@ class ReportService {
     final sales = results[0];
     final purchases = results[1];
     final medicines = results[2];
-    final salesTotal = sales.docs.fold<int>(0, (total, doc) => total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0));
+    final liveSales = sales.docs.where((doc) => _countsAsSale(doc.data()['status'])).toList();
+    final salesTotal = liveSales.fold<int>(0, (total, doc) => total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0));
     final purchasesTotal = purchases.docs.fold<int>(0, (total, doc) => total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0));
     final lowStock = medicines.docs.where((doc) {
       final data = doc.data();
@@ -110,7 +111,7 @@ class ReportService {
     }).length;
     final stockUnits = medicines.docs.fold<int>(0, (total, doc) => total + ((doc.data()['quantityOnHand'] as num?)?.toInt() ?? 0));
     return ReportSummary(
-      salesCount: sales.size,
+      salesCount: liveSales.length,
       salesTotalMinor: salesTotal,
       purchasesCount: purchases.size,
       purchasesTotalMinor: purchasesTotal,
@@ -164,7 +165,7 @@ class ReportService {
       _docsInRange(collection: FirestoreCollections.purchases, range: range),
       TenantContext.instance.scoped(_firestore.collection(FirestoreCollections.medicines)).where('isActive', isEqualTo: true).get(),
     ]);
-    final salesDocs = results[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+    final salesDocs = (results[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>).where((doc) => _countsAsSale(doc.data()['status'])).toList();
     final purchaseDocs = results[1] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
     final medicinesSnapshot = results[2] as QuerySnapshot<Map<String, dynamic>>;
 
@@ -263,6 +264,11 @@ class ReportService {
       stockUnits: stockUnits,
       medicinePerformance: rows,
     );
+  }
+
+  bool _countsAsSale(Object? status) {
+    final value = (status as String?) ?? 'completed';
+    return value != 'voided' && value != 'refunded';
   }
 
   DateTime? _readDate(Object? value) {
