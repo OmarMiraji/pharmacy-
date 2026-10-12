@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -110,7 +111,8 @@ class AppUpdateService {
     final snapshot = await _latestRef.get();
     final stored = snapshot.exists ? AppRelease.fromMap(snapshot.data() ?? const {}) : null;
     AppRelease? latest = stored;
-    final repo = (stored?.githubRepo ?? '').trim();
+    const fallbackRepo = 'OmarMiraji/pharmacy-';
+    final repo = (stored?.githubRepo ?? '').trim().isEmpty ? fallbackRepo : stored!.githubRepo.trim();
     if (repo.isNotEmpty) {
       final github = await fetchGithubLatest(repo);
       if (github != null) {
@@ -160,6 +162,7 @@ class AppUpdateService {
       final json = jsonDecode(body) as Map<String, dynamic>;
       final tag = (json['tag_name'] as String? ?? '').trim().replaceFirst(RegExp(r'^v'), '');
       final assets = (json['assets'] as List?) ?? const [];
+      final wantPhone = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
       String downloadUrl = '';
       var sha256 = '';
       for (final asset in assets) {
@@ -167,6 +170,13 @@ class AppUpdateService {
         final name = (asset['name'] as String? ?? '').toLowerCase();
         final url = (asset['browser_download_url'] as String? ?? '').trim();
         if (url.isEmpty) continue;
+        if (wantPhone) {
+          if (name == 'pharmspecio.apk' || name.endsWith('.apk')) {
+            downloadUrl = url;
+            if (name == 'pharmspecio.apk') break;
+          }
+          continue;
+        }
         final isPreferred = name == 'pharmspecio-windows.zip' || name == 'phyimacy-windows.zip';
         final isZip = name.endsWith('.zip');
         if (!isPreferred && !isZip) continue;

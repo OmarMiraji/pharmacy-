@@ -93,8 +93,8 @@ class MedicineService {
 
     void emitMedicines() {
       final latest = _lastMedicines;
-      if (latest == null) return;
-      _medicineEvents?.add(OfflineSyncService.instance.applyLocalStock(latest));
+      if (latest == null && OfflineSyncService.instance.pendingCount == 0) return;
+      _medicineEvents?.add(OfflineSyncService.instance.applyLocalStock(latest ?? const []));
     }
 
     _medicineSub = _tenant
@@ -564,8 +564,8 @@ class MedicineService {
     _tenant.assertWritable();
     final existing = await findExistingByName(name);
     if (existing != null) return existing.id;
-    if (name.trim().isEmpty || sku.trim().isEmpty || categoryId.trim().isEmpty) {
-      throw ArgumentError('Name, SKU, and category are required.');
+    if (name.trim().isEmpty || categoryId.trim().isEmpty) {
+      throw ArgumentError('Name and category are required.');
     }
     if (purchasePriceMinor < 0 || sellingPriceMinor < 0 || reorderLevel < 0) {
       throw ArgumentError('Prices and reorder level cannot be negative.');
@@ -577,6 +577,8 @@ class MedicineService {
       throw ArgumentError('Expiry date is required when adding opening stock.');
     }
     final ref = _medicines.doc();
+    final storedSku = sku.trim().isEmpty ? '' : sku.trim().toUpperCase();
+    final batchLabel = storedSku.isEmpty ? 'OPEN' : storedSku;
     final size = packSize < 1 ? 1 : packSize;
     final loose = BaseUnits.sellsByPiece(unit) || allowLooseSale;
     final piece = BaseUnits.sellsByPiece(unit);
@@ -595,7 +597,7 @@ class MedicineService {
         final now = FieldValue.serverTimestamp();
         transaction.set(ref, _tenant.withTenant({
           'name': name.trim(),
-          'sku': sku.trim().toUpperCase(),
+          'sku': storedSku,
           'categoryId': categoryId.trim(),
           'unit': unit.trim().isEmpty ? 'unit' : unit.trim(),
           'purchasePriceMinor': purchasePriceMinor,
@@ -616,7 +618,7 @@ class MedicineService {
         }));
         transaction.set(batchRef, _tenant.withTenant({
           'medicineId': ref.id,
-          'batchNumber': code.isEmpty ? 'OPEN-${sku.trim().toUpperCase()}' : code,
+          'batchNumber': code.isEmpty ? 'OPEN-$batchLabel' : code,
           'expiryDate': Timestamp.fromDate(expiryDate),
           'quantityOnHand': stockQty,
           'unitCostMinor': BaseUnits.costPerStockUnit(
@@ -639,7 +641,7 @@ class MedicineService {
             quantityChange: stockQty,
             createdBy: createdBy,
             batchId: batchRef.id,
-            batchNumber: code.isEmpty ? 'OPEN-${sku.trim().toUpperCase()}' : code,
+            batchNumber: code.isEmpty ? 'OPEN-$batchLabel' : code,
             createdAt: now,
           ),
         );
@@ -648,7 +650,7 @@ class MedicineService {
     }
     await ref.set(_tenant.withTenant({
       'name': name.trim(),
-      'sku': sku.trim().toUpperCase(),
+      'sku': storedSku,
       'categoryId': categoryId.trim(),
       'unit': unit.trim().isEmpty ? 'unit' : unit.trim(),
       'purchasePriceMinor': purchasePriceMinor,
@@ -794,8 +796,8 @@ class MedicineService {
     DateTime? expiryDate,
   }) async {
     _tenant.assertWritable();
-    if (medicineId.trim().isEmpty || name.trim().isEmpty || sku.trim().isEmpty || categoryId.trim().isEmpty) {
-      throw ArgumentError('Name, SKU, and category are required.');
+    if (medicineId.trim().isEmpty || name.trim().isEmpty || categoryId.trim().isEmpty) {
+      throw ArgumentError('Name and category are required.');
     }
     if (purchasePriceMinor < 0 || sellingPriceMinor < 0 || reorderLevel < 0) {
       throw ArgumentError('Prices and reorder level cannot be negative.');
@@ -807,7 +809,7 @@ class MedicineService {
     final oldPack = (previous['packSize'] as num?)?.toInt() ?? 1;
     await _medicines.doc(medicineId).update({
       'name': name.trim(),
-      'sku': sku.trim().toUpperCase(),
+      'sku': sku.trim().isEmpty ? '' : sku.trim().toUpperCase(),
       'categoryId': categoryId.trim(),
       'unit': unit.trim().isEmpty ? 'unit' : unit.trim(),
       'purchasePriceMinor': purchasePriceMinor,
@@ -884,7 +886,8 @@ class MedicineService {
     final delta = quantity - current;
     final movementRef = _firestore.collection(FirestoreCollections.stockMovements).doc();
     final now = FieldValue.serverTimestamp();
-    final sku = (medicineData['sku'] as String? ?? 'STOCK').trim().toUpperCase();
+    final rawSku = (medicineData['sku'] as String? ?? '').trim();
+    final sku = rawSku.isEmpty ? 'STOCK' : rawSku.toUpperCase();
     final name = (medicineData['name'] as String? ?? '').trim();
     final expiry = expiryDate ?? ExpiryPriority.parseAny(medicineData['expiryDate']);
 

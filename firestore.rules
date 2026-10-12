@@ -350,17 +350,7 @@ service cloud.firestore {
         && request.resource.data.pharmacyId == tenantId()
         && request.resource.data.role in ['pharmacist', 'cashier', 'storekeeper']
       );
-      allow update: if isSuperAdmin() || selfProfileUpdate(userId) || shopAdminUpdatesStaff(userId) || (
-        request.auth.uid == userId
-        && request.resource.data.pharmacyId is string
-        && request.resource.data.pharmacyId.size() > 0
-        && (
-          !('pharmacyId' in resource.data)
-          || resource.data.pharmacyId == null
-          || resource.data.pharmacyId == ''
-          || resource.data.pharmacyId == request.resource.data.pharmacyId
-        )
-      );
+      allow update: if isSuperAdmin() || selfProfileUpdate(userId) || shopAdminUpdatesStaff(userId);
       allow delete: if isSuperAdmin() || (
         hasPermission('users.manage')
         && pharmacyWritable()
@@ -370,31 +360,57 @@ service cloud.firestore {
       );
     }
 
+    function batchStockKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['quantityOnHand', 'isActive', 'updatedAt']);
+    }
+
     match /medicines/{medicineId} {
-      allow read: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.pharmacyId is string
+      allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'medicines.view');
+      allow create: if canWriteTenant(request.resource.data.pharmacyId, 'medicines.create')
         && medicineValuesValid(request.resource.data);
-      allow update: if signedIn()
+      allow update: if medicineValuesValid(request.resource.data)
         && request.resource.data.pharmacyId == resource.data.pharmacyId
-        && medicineValuesValid(request.resource.data);
+        && (
+          canWriteTenant(resource.data.pharmacyId, 'medicines.update')
+          || (
+            stockOnlyMedicineKeys()
+            && (
+              canWriteTenant(resource.data.pharmacyId, 'sales.create')
+              || canWriteTenant(resource.data.pharmacyId, 'inventory.adjust')
+            )
+          )
+          || (
+            purchaseReceiveMedicineKeys()
+            && canWriteTenant(resource.data.pharmacyId, 'purchases.receive')
+          )
+        );
       allow delete: if canWriteTenant(resource.data.pharmacyId, 'medicines.delete');
     }
 
     match /medicine_batches/{batchId} {
-      allow read: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.pharmacyId is string
+      allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'medicines.view');
+      allow create: if canWriteTenant(request.resource.data.pharmacyId, 'medicines.create')
         && nonNegNumber(request.resource.data.quantityOnHand);
-      allow update: if signedIn()
+      allow update: if nonNegNumber(request.resource.data.quantityOnHand)
         && request.resource.data.pharmacyId == resource.data.pharmacyId
-        && nonNegNumber(request.resource.data.quantityOnHand);
+        && (
+          canWriteTenant(resource.data.pharmacyId, 'medicines.update')
+          || canWriteTenant(resource.data.pharmacyId, 'inventory.adjust')
+          || (
+            batchStockKeys()
+            && (
+              canWriteTenant(resource.data.pharmacyId, 'sales.create')
+              || canWriteTenant(resource.data.pharmacyId, 'purchases.receive')
+            )
+          )
+        );
       allow delete: if canWriteTenant(resource.data.pharmacyId, 'medicines.delete');
     }
 
     match /categories/{categoryId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.pharmacyId is string;
+      allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'medicines.view');
+      allow create: if canWriteTenant(request.resource.data.pharmacyId, 'medicines.create');
       allow update, delete: if canWriteTenant(resource.data.pharmacyId, 'medicines.update');
     }
 
@@ -411,27 +427,41 @@ service cloud.firestore {
     }
 
     match /purchases/{purchaseId} {
-      allow read, create, update: if signedIn();
+      allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'purchases.view');
+      allow create: if canWriteTenant(request.resource.data.pharmacyId, 'purchases.create')
+        || canWriteTenant(request.resource.data.pharmacyId, 'purchases.receive');
+      allow update: if request.resource.data.pharmacyId == resource.data.pharmacyId
+        && (
+          canWriteTenant(resource.data.pharmacyId, 'purchases.create')
+          || canWriteTenant(resource.data.pharmacyId, 'purchases.receive')
+        );
       allow delete: if isSuperAdmin();
 
       match /items/{itemId} {
-        allow read, write: if signedIn();
+        allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'purchases.view');
+        allow create: if canWriteTenant(request.resource.data.pharmacyId, 'purchases.create')
+          || canWriteTenant(request.resource.data.pharmacyId, 'purchases.receive');
+        allow update, delete: if isSuperAdmin();
       }
     }
 
     match /sales/{saleId} {
-      allow read: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.pharmacyId is string
-        && saleTotalsValid(request.resource.data);
-      allow update: if signedIn()
-        && request.resource.data.pharmacyId == resource.data.pharmacyId
-        && saleTotalsValid(request.resource.data);
+      allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'sales.view');
+      allow create: if canWriteTenant(request.resource.data.pharmacyId, 'sales.create')
+        && saleTotalsValid(request.resource.data)
+        && saleDiscountAllowed(request.resource.data);
+      allow update: if request.resource.data.pharmacyId == resource.data.pharmacyId
+        && saleTotalsValid(request.resource.data)
+        && saleDiscountAllowed(request.resource.data)
+        && (
+          canWriteTenant(resource.data.pharmacyId, 'sales.create')
+          || canWriteTenant(resource.data.pharmacyId, 'sales.refund')
+        );
       allow delete: if isSuperAdmin();
 
       match /items/{itemId} {
-        allow read: if signedIn();
-        allow create: if signedIn()
+        allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'sales.view');
+        allow create: if canWriteTenant(request.resource.data.pharmacyId, 'sales.create')
           && request.resource.data.quantity is int
           && request.resource.data.quantity > 0
           && request.resource.data.unitPriceMinor is int
@@ -443,7 +473,10 @@ service cloud.firestore {
     }
 
     match /stock_movements/{movementId} {
-      allow read, create: if signedIn();
+      allow read: if isSuperAdmin()
+        || canReadTenant(resource.data.pharmacyId, 'inventory.view')
+        || canReadTenant(resource.data.pharmacyId, 'sales.view');
+      allow create: if canWriteStockLedger(request.resource.data.pharmacyId);
       allow update, delete: if isSuperAdmin();
     }
 

@@ -48,14 +48,28 @@ class AuthAccountService {
     }
 
     try {
-      final uid = await _createViaIdentity(trimmedEmail, password);
+      final created = await _callFunction('createAuthUser', {
+        'email': trimmedEmail,
+        'password': password,
+        'role': role,
+      });
+      final uid = (created['uid'] as String? ?? '').trim();
+      if (uid.isEmpty) {
+        throw StateError('Could not create that login. Try again.');
+      }
       await rememberAuthUid(email: trimmedEmail, uid: uid);
       return uid;
-    } on Exception catch (error) {
-      if ('$error'.contains('already has a login')) {
+    } on _CallableError catch (error) {
+      final text = error.message.toLowerCase();
+      if (text.contains('already') || error.code == 'already-exists') {
         return _recycleExistingLogin(trimmedEmail, password);
       }
-      rethrow;
+      if (error.code == 'not-found' || error.code == 'unavailable') {
+        final uid = await _createViaIdentity(trimmedEmail, password);
+        await rememberAuthUid(email: trimmedEmail, uid: uid);
+        return uid;
+      }
+      throw StateError(error.message);
     }
   }
 
@@ -113,7 +127,9 @@ class AuthAccountService {
         'password': password,
         'returnSecureToken': false,
       });
-      return _requireUid(json);
+      final uid = (json['localId'] as String? ?? '').trim();
+      if (uid.isEmpty) throw StateError('Login could not be created. Try again.');
+      return uid;
     } on _IdentityError catch (error) {
       throw Exception(error.userMessage);
     }
@@ -224,12 +240,6 @@ class AuthAccountService {
       }
       throw Exception(error.userMessage);
     }
-  }
-
-  String _requireUid(Map<String, dynamic> json) {
-    final uid = (json['localId'] as String? ?? '').trim();
-    if (uid.isEmpty) throw StateError('Login could not be created. Try again.');
-    return uid;
   }
 
   Future<Map<String, dynamic>> _identity(String method, Map<String, Object> body) async {

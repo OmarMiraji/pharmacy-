@@ -47,3 +47,29 @@ jobs:
             pharmspecio-windows.zip
           generate_release_notes: true
           make_latest: true
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.6"
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build Android release
+        run: flutter build apk --release
+
+      - name: Name the phone package
+        run: cp build/app/outputs/flutter-apk/app-release.apk pharmspecio.apk
+
+      - name: Publish Android package
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pharmspecio.apk
+          make_latest: true

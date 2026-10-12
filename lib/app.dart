@@ -505,12 +505,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     final title = !sync.isOnline
                         ? S.t('No internet — using saved shop data', 'Hakuna intaneti — inatumia data iliyohifadhiwa')
                         : sync.isSyncing
-                            ? S.t('Sending saved sales...', 'Inatuma mauzo yaliyohifadhiwa...')
-                            : '${sync.pendingCount} saved sale${sync.pendingCount == 1 ? '' : 's'} waiting to send';
+                            ? S.t('Sending saved changes...', 'Inatuma vilivyohifadhiwa...')
+                            : S.t(
+                                '${sync.pendingCount} saved ${sync.pendingCount == 1 ? 'change' : 'changes'} waiting to send',
+                                'Mabadiliko ${sync.pendingCount} yamehifadhiwa, yanangoja kutumwa',
+                              );
                     final subtitle = !sync.isOnline
                         ? (sync.pendingCount == 0
-                            ? S.t('Sales still work on this PC. They send when the connection returns.', 'Mauzo bado yanaweza kufanyika. Yatatoka intaneti irudipo.')
-                            : '${sync.pendingCount} sale${sync.pendingCount == 1 ? '' : 's'} saved on this computer.')
+                            ? S.t(
+                                'Sales and medicine changes still work on this PC. They send when the connection returns.',
+                                'Mauzo na mabadiliko ya dawa bado yanaweza kufanyika. Yatatoka intaneti irudipo.',
+                              )
+                            : S.t(
+                                '${sync.pendingCount} saved on this computer. They send when the internet returns.',
+                                '${sync.pendingCount} vimehifadhiwa kwenye kompyuta hii. Vitatumwa intaneti ikirudi.',
+                              ))
                         : (sync.lastError ?? 'Tap Send now if they stay here after the connection is back.');
                     return Material(
                       color: sync.isOnline ? const Color(0xffe8f6f2) : const Color(0xfffff4e5),
@@ -5241,7 +5250,17 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                       const SizedBox(height: 10),
                       _requiredField(name, S.t('Medicine name', 'Jina la dawa'), icon: Icons.medication_outlined, focusNode: nameFocus, fieldKey: nameKey, onSubmit: () => saveHold?.call()),
                       const SizedBox(height: 10),
-                      Row(children: [Expanded(child: _requiredField(sku, S.t('SKU / code', 'SKU / namba'), icon: Icons.qr_code_2_rounded, focusNode: skuFocus, fieldKey: skuKey, onSubmit: () => saveHold?.call())), const SizedBox(width: 12), Expanded(child: DropdownButtonFormField<String>(
+                      Row(children: [Expanded(child: TextFormField(
+                        key: skuKey,
+                        focusNode: skuFocus,
+                        controller: sku,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => saveHold?.call(),
+                        decoration: InputDecoration(
+                          labelText: S.t('SKU / code (optional)', 'SKU / namba (si lazima)'),
+                          prefixIcon: const Icon(Icons.qr_code_2_rounded, size: 19),
+                        ),
+                      )), const SizedBox(width: 12), Expanded(child: DropdownButtonFormField<String>(
                         initialValue: BaseUnits.options.contains(baseUnit) ? baseUnit : 'Tablet',
                         decoration: InputDecoration(
                           labelText: S.t('This is a', 'Hii ni'),
@@ -5723,10 +5742,6 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           missing = S.t('Medicine name is required.', 'Jina la dawa linahitajika.');
                           focus = nameFocus;
                           anchor = nameKey;
-                        } else if (sku.text.trim().isEmpty) {
-                          missing = S.t('SKU / code is required.', 'SKU / namba inahitajika.');
-                          focus = skuFocus;
-                          anchor = skuKey;
                         } else if (selectedCategoryId == null || selectedCategoryId!.isEmpty) {
                           missing = S.t('Select a category.', 'Chagua kundi.');
                           focus = categoryFocus;
@@ -5797,59 +5812,34 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           final fromPack = pieceSale && tabletMode == 'pack';
                           final fromBlister = pieceSale && tabletMode == 'blister';
                           final stockFactor = fromBlister ? parsedStrip : parsedPack;
-                          if (editing) {
-                            await service.updateMedicine(
-                              medicineId: medicine.id,
-                              name: name.text,
-                              sku: sku.text,
-                              categoryId: selectedCategoryId!,
-                              unit: baseUnit,
-                              purchasePriceMinor: int.parse(purchasePrice.text),
-                              sellingPriceMinor: int.parse(sellingPrice.text),
-                              reorderLevel: int.parse(reorderLevel.text),
-                              requiresPrescription: prescription,
-                              packSize: parsedPack,
-                              stripSize: parsedStrip,
-                              boxSize: 0,
-                              minSaleQty: parsedMin,
-                              allowLooseSale: BaseUnits.sellsByPiece(baseUnit),
-                              allowHalfBlister: fromBlister && allowHalf,
-                              expiryDate: expiryDate,
-                            );
-                            final enteredStock = int.tryParse(openingQty.text.trim());
-                            if (enteredStock != null) {
-                              final nextQty = (fromPack || fromBlister) ? enteredStock * stockFactor : enteredStock;
-                              await service.setOnHandQuantity(
-                                medicineId: medicine.id,
-                                quantity: nextQty,
-                                createdBy: AuthService().currentUser?.uid ?? 'staff',
-                                expiryDate: expiryDate,
-                              );
-                            }
-                          } else {
-                            final userId = AuthService().currentUser?.uid ?? 'staff';
-                            await service.createMedicine(
-                              name: name.text,
-                              sku: sku.text,
-                              categoryId: selectedCategoryId!,
-                              unit: baseUnit,
-                              purchasePriceMinor: int.parse(purchasePrice.text),
-                              sellingPriceMinor: int.parse(sellingPrice.text),
-                              reorderLevel: int.parse(reorderLevel.text),
-                              requiresPrescription: prescription,
-                              packSize: parsedPack,
-                              stripSize: parsedStrip,
-                              boxSize: 0,
-                              minSaleQty: parsedMin,
-                              allowLooseSale: BaseUnits.sellsByPiece(baseUnit),
-                              allowHalfBlister: fromBlister && allowHalf,
-                              expiryDate: expiryDate,
-                              openingQuantity: qty,
-                              openingAsTablets: !(fromPack || fromBlister),
-                              batchNumber: batchNumber.text,
-                              createdBy: userId,
-                            );
-                          }
+                          final enteredStock = int.tryParse(openingQty.text.trim()) ?? qty;
+                          final baseQty = (fromPack || fromBlister) ? enteredStock * stockFactor : enteredStock;
+                          final userId = AuthService().currentUser?.uid ?? 'staff';
+                          await OfflineSyncService.instance.saveMedicine(
+                            editing: editing,
+                            medicineId: medicine?.id,
+                            name: name.text,
+                            sku: sku.text,
+                            categoryId: selectedCategoryId!,
+                            unit: baseUnit,
+                            purchasePriceMinor: int.parse(purchasePrice.text),
+                            sellingPriceMinor: int.parse(sellingPrice.text),
+                            reorderLevel: int.parse(reorderLevel.text),
+                            requiresPrescription: prescription,
+                            packSize: parsedPack,
+                            stripSize: parsedStrip,
+                            boxSize: 0,
+                            minSaleQty: parsedMin,
+                            allowLooseSale: BaseUnits.sellsByPiece(baseUnit),
+                            allowHalfBlister: fromBlister && allowHalf,
+                            expiryDate: expiryDate,
+                            openingQuantity: editing ? 0 : qty,
+                            openingAsTablets: !(fromPack || fromBlister),
+                            batchNumber: batchNumber.text,
+                            onHandQuantity: editing ? baseQty : null,
+                            previewQuantity: baseQty,
+                            createdBy: userId,
+                          );
                           if (dialogContext.mounted) Navigator.pop(dialogContext);
                         } catch (error) {
                           if (!context.mounted) return;

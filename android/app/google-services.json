@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "433141635482",
+    "project_id": "phyimacy-management-system",
+    "storage_bucket": "phyimacy-management-system.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:433141635482:android:32ac2bb86439bb18c5c223",
+        "android_client_info": {
+          "package_name": "com.pharmspecio.phyimacy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "433141635482-s9aro9enb7vjg0vgaqrj9lls6nfolcmo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-psaAvVt4pgEo-lfqKDuWGazGJSyp5T8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "433141635482-s9aro9enb7vjg0vgaqrj9lls6nfolcmo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

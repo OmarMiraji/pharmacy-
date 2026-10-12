@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'medicine_service.dart';
 import 'models.dart';
 import 'permissions.dart';
 import 'sales_service.dart';
@@ -71,6 +73,160 @@ class PendingSale {
   }
 }
 
+class PendingMedicineWrite {
+  const PendingMedicineWrite({
+    required this.id,
+    required this.pharmacyId,
+    required this.editing,
+    required this.name,
+    required this.sku,
+    required this.categoryId,
+    required this.unit,
+    required this.purchasePriceMinor,
+    required this.sellingPriceMinor,
+    required this.reorderLevel,
+    required this.requiresPrescription,
+    required this.packSize,
+    required this.stripSize,
+    required this.boxSize,
+    required this.minSaleQty,
+    required this.allowLooseSale,
+    required this.allowHalfBlister,
+    required this.openingQuantity,
+    required this.openingAsTablets,
+    required this.previewQuantity,
+    required this.createdBy,
+    required this.createdAt,
+    this.medicineId,
+    this.expiryDate,
+    this.batchNumber,
+    this.onHandQuantity,
+    this.lastError,
+  });
+
+  final String id;
+  final String pharmacyId;
+  final bool editing;
+  final String? medicineId;
+  final String name;
+  final String sku;
+  final String categoryId;
+  final String unit;
+  final int purchasePriceMinor;
+  final int sellingPriceMinor;
+  final int reorderLevel;
+  final bool requiresPrescription;
+  final int packSize;
+  final int stripSize;
+  final int boxSize;
+  final int minSaleQty;
+  final bool allowLooseSale;
+  final bool allowHalfBlister;
+  final DateTime? expiryDate;
+  final int openingQuantity;
+  final bool openingAsTablets;
+  final String? batchNumber;
+  final int? onHandQuantity;
+  final int previewQuantity;
+  final String createdBy;
+  final DateTime createdAt;
+  final String? lastError;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'pharmacyId': pharmacyId,
+        'editing': editing,
+        'medicineId': medicineId,
+        'name': name,
+        'sku': sku,
+        'categoryId': categoryId,
+        'unit': unit,
+        'purchasePriceMinor': purchasePriceMinor,
+        'sellingPriceMinor': sellingPriceMinor,
+        'reorderLevel': reorderLevel,
+        'requiresPrescription': requiresPrescription,
+        'packSize': packSize,
+        'stripSize': stripSize,
+        'boxSize': boxSize,
+        'minSaleQty': minSaleQty,
+        'allowLooseSale': allowLooseSale,
+        'allowHalfBlister': allowHalfBlister,
+        'expiryDate': expiryDate?.toIso8601String(),
+        'openingQuantity': openingQuantity,
+        'openingAsTablets': openingAsTablets,
+        'batchNumber': batchNumber,
+        'onHandQuantity': onHandQuantity,
+        'previewQuantity': previewQuantity,
+        'createdBy': createdBy,
+        'createdAt': createdAt.toIso8601String(),
+        'lastError': lastError,
+      };
+
+  factory PendingMedicineWrite.fromJson(Map<String, dynamic> json) {
+    return PendingMedicineWrite(
+      id: json['id'] as String? ?? '',
+      pharmacyId: json['pharmacyId'] as String? ?? '',
+      editing: json['editing'] == true,
+      medicineId: json['medicineId'] as String?,
+      name: json['name'] as String? ?? '',
+      sku: json['sku'] as String? ?? '',
+      categoryId: json['categoryId'] as String? ?? '',
+      unit: json['unit'] as String? ?? 'unit',
+      purchasePriceMinor: (json['purchasePriceMinor'] as num?)?.toInt() ?? 0,
+      sellingPriceMinor: (json['sellingPriceMinor'] as num?)?.toInt() ?? 0,
+      reorderLevel: (json['reorderLevel'] as num?)?.toInt() ?? 0,
+      requiresPrescription: json['requiresPrescription'] == true,
+      packSize: (json['packSize'] as num?)?.toInt() ?? 1,
+      stripSize: (json['stripSize'] as num?)?.toInt() ?? 0,
+      boxSize: (json['boxSize'] as num?)?.toInt() ?? 0,
+      minSaleQty: (json['minSaleQty'] as num?)?.toInt() ?? 0,
+      allowLooseSale: json['allowLooseSale'] == true,
+      allowHalfBlister: json['allowHalfBlister'] == true,
+      expiryDate: DateTime.tryParse(json['expiryDate'] as String? ?? ''),
+      openingQuantity: (json['openingQuantity'] as num?)?.toInt() ?? 0,
+      openingAsTablets: json['openingAsTablets'] != false,
+      batchNumber: json['batchNumber'] as String?,
+      onHandQuantity: (json['onHandQuantity'] as num?)?.toInt(),
+      previewQuantity: (json['previewQuantity'] as num?)?.toInt() ?? 0,
+      createdBy: json['createdBy'] as String? ?? '',
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      lastError: json['lastError'] as String?,
+    );
+  }
+
+  PendingMedicineWrite copyWithError(String error) {
+    return PendingMedicineWrite(
+      id: id,
+      pharmacyId: pharmacyId,
+      editing: editing,
+      medicineId: medicineId,
+      name: name,
+      sku: sku,
+      categoryId: categoryId,
+      unit: unit,
+      purchasePriceMinor: purchasePriceMinor,
+      sellingPriceMinor: sellingPriceMinor,
+      reorderLevel: reorderLevel,
+      requiresPrescription: requiresPrescription,
+      packSize: packSize,
+      stripSize: stripSize,
+      boxSize: boxSize,
+      minSaleQty: minSaleQty,
+      allowLooseSale: allowLooseSale,
+      allowHalfBlister: allowHalfBlister,
+      expiryDate: expiryDate,
+      openingQuantity: openingQuantity,
+      openingAsTablets: openingAsTablets,
+      batchNumber: batchNumber,
+      onHandQuantity: onHandQuantity,
+      previewQuantity: previewQuantity,
+      createdBy: createdBy,
+      createdAt: createdAt,
+      lastError: error,
+    );
+  }
+}
+
 class OfflineSyncService extends ChangeNotifier {
   OfflineSyncService._();
   static final OfflineSyncService instance = OfflineSyncService._();
@@ -78,19 +234,25 @@ class OfflineSyncService extends ChangeNotifier {
   static const _syncChunkSize = 15;
 
   final SalesService _sales = SalesService();
+  final MedicineService _medicines = MedicineService();
   final _OfflineQueueVault _vault = _OfflineQueueVault();
   Timer? _timer;
   bool _online = true;
   bool _syncing = false;
   List<PendingSale> _queue = [];
+  List<PendingMedicineWrite> _medicineQueue = [];
 
   bool get isOnline => _online;
   bool get isSyncing => _syncing;
-  int get pendingCount => _queue.length;
+  int get pendingCount => _queue.length + _medicineQueue.length;
   List<PendingSale> get pendingSales => List.unmodifiable(_queue);
   String? get lastError {
     for (final sale in _queue) {
       final error = sale.lastError;
+      if (error != null && error.trim().isNotEmpty) return error;
+    }
+    for (final change in _medicineQueue) {
+      final error = change.lastError;
       if (error != null && error.trim().isNotEmpty) return error;
     }
     return null;
@@ -115,7 +277,7 @@ class OfflineSyncService extends ChangeNotifier {
     final changed = online != _online;
     _online = online;
     if (changed) notifyListeners();
-    if (online && _queue.isNotEmpty) {
+    if (online && pendingCount > 0) {
       await syncPending();
     }
   }
@@ -131,7 +293,7 @@ class OfflineSyncService extends ChangeNotifier {
     if (!_online) {
       _online = true;
       notifyListeners();
-      if (_queue.isNotEmpty) unawaited(syncPending());
+      if (pendingCount > 0) unawaited(syncPending());
     }
   }
 
@@ -222,11 +384,186 @@ class OfflineSyncService extends ChangeNotifier {
     return pending.id;
   }
 
+  Future<String> saveMedicine({
+    required bool editing,
+    String? medicineId,
+    required String name,
+    required String sku,
+    required String categoryId,
+    required String unit,
+    required int purchasePriceMinor,
+    required int sellingPriceMinor,
+    required int reorderLevel,
+    required bool requiresPrescription,
+    int packSize = 1,
+    int stripSize = 0,
+    int boxSize = 0,
+    int minSaleQty = 0,
+    bool allowLooseSale = false,
+    bool allowHalfBlister = false,
+    DateTime? expiryDate,
+    int openingQuantity = 0,
+    bool openingAsTablets = true,
+    String? batchNumber,
+    int? onHandQuantity,
+    required int previewQuantity,
+    required String createdBy,
+  }) async {
+    TenantContext.instance.assertWritable();
+    if (name.trim().isEmpty || categoryId.trim().isEmpty) {
+      throw ArgumentError('Name and category are required.');
+    }
+    if (editing && (medicineId ?? '').trim().isEmpty) {
+      throw ArgumentError('Medicine is required.');
+    }
+
+    Future<String> send() {
+      if (editing) {
+        return _sendMedicineUpdate(
+          medicineId: medicineId!.trim(),
+          name: name,
+          sku: sku,
+          categoryId: categoryId,
+          unit: unit,
+          purchasePriceMinor: purchasePriceMinor,
+          sellingPriceMinor: sellingPriceMinor,
+          reorderLevel: reorderLevel,
+          requiresPrescription: requiresPrescription,
+          packSize: packSize,
+          stripSize: stripSize,
+          boxSize: boxSize,
+          minSaleQty: minSaleQty,
+          allowLooseSale: allowLooseSale,
+          allowHalfBlister: allowHalfBlister,
+          expiryDate: expiryDate,
+          onHandQuantity: onHandQuantity,
+          batchNumber: batchNumber,
+          createdBy: createdBy,
+        );
+      }
+      return _medicines.createMedicine(
+        name: name,
+        sku: sku,
+        categoryId: categoryId,
+        unit: unit,
+        purchasePriceMinor: purchasePriceMinor,
+        sellingPriceMinor: sellingPriceMinor,
+        reorderLevel: reorderLevel,
+        requiresPrescription: requiresPrescription,
+        packSize: packSize,
+        stripSize: stripSize,
+        boxSize: boxSize,
+        minSaleQty: minSaleQty,
+        allowLooseSale: allowLooseSale,
+        allowHalfBlister: allowHalfBlister,
+        expiryDate: expiryDate,
+        openingQuantity: openingQuantity,
+        openingAsTablets: openingAsTablets,
+        batchNumber: batchNumber,
+        createdBy: createdBy,
+      );
+    }
+
+    if (_online) {
+      try {
+        return await send();
+      } catch (error) {
+        if (!isNetworkError(error)) rethrow;
+        _online = false;
+      }
+    }
+
+    final pending = PendingMedicineWrite(
+      id: 'M-${DateTime.now().millisecondsSinceEpoch}',
+      pharmacyId: TenantContext.instance.requirePharmacyId(),
+      editing: editing,
+      medicineId: medicineId,
+      name: name.trim(),
+      sku: sku.trim(),
+      categoryId: categoryId.trim(),
+      unit: unit,
+      purchasePriceMinor: purchasePriceMinor,
+      sellingPriceMinor: sellingPriceMinor,
+      reorderLevel: reorderLevel,
+      requiresPrescription: requiresPrescription,
+      packSize: packSize,
+      stripSize: stripSize,
+      boxSize: boxSize,
+      minSaleQty: minSaleQty,
+      allowLooseSale: allowLooseSale,
+      allowHalfBlister: allowHalfBlister,
+      expiryDate: expiryDate,
+      openingQuantity: openingQuantity,
+      openingAsTablets: openingAsTablets,
+      batchNumber: batchNumber,
+      onHandQuantity: onHandQuantity,
+      previewQuantity: previewQuantity,
+      createdBy: createdBy,
+      createdAt: DateTime.now(),
+    );
+    _medicineQueue = [..._medicineQueue, pending];
+    await _save();
+    notifyListeners();
+    unawaited(pingAndSync());
+    return pending.id;
+  }
+
+  Future<String> _sendMedicineUpdate({
+    required String medicineId,
+    required String name,
+    required String sku,
+    required String categoryId,
+    required String unit,
+    required int purchasePriceMinor,
+    required int sellingPriceMinor,
+    required int reorderLevel,
+    required bool requiresPrescription,
+    required int packSize,
+    required int stripSize,
+    required int boxSize,
+    required int minSaleQty,
+    required bool allowLooseSale,
+    required bool allowHalfBlister,
+    required DateTime? expiryDate,
+    required int? onHandQuantity,
+    required String? batchNumber,
+    required String createdBy,
+  }) async {
+    await _medicines.updateMedicine(
+      medicineId: medicineId,
+      name: name,
+      sku: sku,
+      categoryId: categoryId,
+      unit: unit,
+      purchasePriceMinor: purchasePriceMinor,
+      sellingPriceMinor: sellingPriceMinor,
+      reorderLevel: reorderLevel,
+      requiresPrescription: requiresPrescription,
+      packSize: packSize,
+      stripSize: stripSize,
+      boxSize: boxSize,
+      minSaleQty: minSaleQty,
+      allowLooseSale: allowLooseSale,
+      allowHalfBlister: allowHalfBlister,
+      expiryDate: expiryDate,
+    );
+    if (onHandQuantity != null) {
+      await _medicines.setOnHandQuantity(
+        medicineId: medicineId,
+        quantity: onHandQuantity,
+        createdBy: createdBy,
+        expiryDate: expiryDate,
+        batchNumber: batchNumber,
+      );
+    }
+    return medicineId;
+  }
+
   Future<void> syncPending() async {
     if (_syncing) return;
     final pharmacyId = TenantContext.instance.pharmacyId;
     if (pharmacyId == null || pharmacyId.isEmpty) return;
-    if (_queue.isEmpty) return;
+    if (_queue.isEmpty && _medicineQueue.isEmpty) return;
 
     _syncing = true;
     notifyListeners();
@@ -289,8 +626,42 @@ class OfflineSyncService extends ChangeNotifier {
         }
       }
       _queue = remaining;
+      final medicineRemaining = <PendingMedicineWrite>[];
+      if (paused) {
+        medicineRemaining.addAll(_medicineQueue);
+      } else {
+        for (final change in _medicineQueue) {
+          if (paused) {
+            medicineRemaining.add(change);
+            continue;
+          }
+          if (change.pharmacyId != pharmacyId) {
+            medicineRemaining.add(change);
+            continue;
+          }
+          if (processed >= _syncChunkSize) {
+            medicineRemaining.add(change);
+            continue;
+          }
+          try {
+            await _replayMedicine(change);
+            processed++;
+          } catch (error) {
+            if (isNetworkError(error)) {
+              medicineRemaining.add(change);
+              paused = true;
+              continue;
+            }
+            medicineRemaining.add(change.copyWithError(error.toString().replaceFirst('Bad state: ', '')));
+            processed++;
+          }
+        }
+      }
+      _medicineQueue = medicineRemaining;
       await _save();
-      if (!paused && remaining.any((sale) => sale.pharmacyId == pharmacyId && (sale.lastError ?? '').isEmpty)) {
+      final salesLeft = remaining.any((sale) => sale.pharmacyId == pharmacyId && (sale.lastError ?? '').isEmpty);
+      final medicinesLeft = medicineRemaining.any((change) => change.pharmacyId == pharmacyId && (change.lastError ?? '').isEmpty);
+      if (!paused && (salesLeft || medicinesLeft)) {
         unawaited(Future<void>.delayed(const Duration(milliseconds: 50), syncPending));
       }
     } finally {
@@ -312,9 +683,10 @@ class OfflineSyncService extends ChangeNotifier {
   }
 
   List<Medicine> applyLocalStock(List<Medicine> medicines) {
+    final overlaid = _overlayMedicines(medicines);
     final reserved = reservedQuantities();
-    if (reserved.isEmpty) return medicines;
-    return medicines
+    if (reserved.isEmpty) return overlaid;
+    return overlaid
         .map((medicine) {
           final hold = reserved[medicine.id] ?? 0;
           if (hold == 0) return medicine;
@@ -322,6 +694,119 @@ class OfflineSyncService extends ChangeNotifier {
           return medicine.copyWith(quantityOnHand: remaining < 0 ? 0 : remaining);
         })
         .toList();
+  }
+
+  Future<void> _replayMedicine(PendingMedicineWrite change) async {
+    if (change.editing) {
+      await _sendMedicineUpdate(
+        medicineId: (change.medicineId ?? '').trim(),
+        name: change.name,
+        sku: change.sku,
+        categoryId: change.categoryId,
+        unit: change.unit,
+        purchasePriceMinor: change.purchasePriceMinor,
+        sellingPriceMinor: change.sellingPriceMinor,
+        reorderLevel: change.reorderLevel,
+        requiresPrescription: change.requiresPrescription,
+        packSize: change.packSize,
+        stripSize: change.stripSize,
+        boxSize: change.boxSize,
+        minSaleQty: change.minSaleQty,
+        allowLooseSale: change.allowLooseSale,
+        allowHalfBlister: change.allowHalfBlister,
+        expiryDate: change.expiryDate,
+        onHandQuantity: change.onHandQuantity,
+        batchNumber: change.batchNumber,
+        createdBy: change.createdBy,
+      );
+      return;
+    }
+    await _medicines.createMedicine(
+      name: change.name,
+      sku: change.sku,
+      categoryId: change.categoryId,
+      unit: change.unit,
+      purchasePriceMinor: change.purchasePriceMinor,
+      sellingPriceMinor: change.sellingPriceMinor,
+      reorderLevel: change.reorderLevel,
+      requiresPrescription: change.requiresPrescription,
+      packSize: change.packSize,
+      stripSize: change.stripSize,
+      boxSize: change.boxSize,
+      minSaleQty: change.minSaleQty,
+      allowLooseSale: change.allowLooseSale,
+      allowHalfBlister: change.allowHalfBlister,
+      expiryDate: change.expiryDate,
+      openingQuantity: change.openingQuantity,
+      openingAsTablets: change.openingAsTablets,
+      batchNumber: change.batchNumber,
+      createdBy: change.createdBy,
+    );
+  }
+
+  List<Medicine> _overlayMedicines(List<Medicine> medicines) {
+    final pharmacyId = TenantContext.instance.pharmacyId ?? '';
+    final list = [...medicines];
+    for (final change in _medicineQueue) {
+      if (change.pharmacyId != pharmacyId) continue;
+      if (change.editing) {
+        final index = list.indexWhere((item) => item.id == change.medicineId);
+        if (index < 0) continue;
+        list[index] = _previewFrom(list[index], change);
+        continue;
+      }
+      final named = change.name.trim().toLowerCase();
+      if (list.any((item) => item.name.trim().toLowerCase() == named)) continue;
+      list.add(_previewNew(change));
+    }
+    list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
+  }
+
+  Medicine _previewFrom(Medicine base, PendingMedicineWrite change) {
+    return Medicine(
+      id: base.id,
+      name: change.name,
+      sku: change.sku.trim().isEmpty ? '' : change.sku.trim().toUpperCase(),
+      categoryId: change.categoryId,
+      unit: change.unit,
+      purchasePriceMinor: change.purchasePriceMinor,
+      sellingPriceMinor: change.sellingPriceMinor,
+      quantityOnHand: change.onHandQuantity ?? base.quantityOnHand,
+      reorderLevel: change.reorderLevel,
+      requiresPrescription: change.requiresPrescription,
+      isActive: true,
+      expiryDate: change.expiryDate == null ? base.expiryDate : Timestamp.fromDate(change.expiryDate!),
+      packSize: change.packSize < 1 ? 1 : change.packSize,
+      stripSize: change.stripSize,
+      boxSize: change.boxSize,
+      allowLooseSale: change.allowLooseSale,
+      allowHalfBlister: change.allowHalfBlister,
+      minSaleQty: change.minSaleQty,
+    );
+  }
+
+  Medicine _previewNew(PendingMedicineWrite change) {
+    return Medicine(
+      id: change.id,
+      name: change.name,
+      sku: change.sku.trim().isEmpty ? '' : change.sku.trim().toUpperCase(),
+      categoryId: change.categoryId,
+      unit: change.unit,
+      purchasePriceMinor: change.purchasePriceMinor,
+      sellingPriceMinor: change.sellingPriceMinor,
+      quantityOnHand: change.previewQuantity < 0 ? 0 : change.previewQuantity,
+      reorderLevel: change.reorderLevel,
+      requiresPrescription: change.requiresPrescription,
+      isActive: true,
+      expiryDate: change.expiryDate == null ? null : Timestamp.fromDate(change.expiryDate!),
+      packSize: change.packSize < 1 ? 1 : change.packSize,
+      stripSize: change.stripSize,
+      boxSize: change.boxSize,
+      allowLooseSale: change.allowLooseSale,
+      allowHalfBlister: change.allowHalfBlister,
+      minSaleQty: change.minSaleQty,
+    );
   }
 
   Future<File> _file() async {
@@ -344,20 +829,47 @@ class OfflineSyncService extends ChangeNotifier {
       } else if (await legacy.exists()) {
         raw = await legacy.readAsString();
       }
-      if (raw == null || raw.trim().isEmpty) return;
-      final decoded = await compute(_decodeQueueJson, raw);
-      _queue = decoded.map(PendingSale.fromJson).toList();
-      if (await legacy.exists()) {
-        await _save();
-        await legacy.delete();
+      if (raw != null && raw.trim().isNotEmpty) {
+        final decoded = await compute(_decodeQueueJson, raw);
+        _queue = decoded.map(PendingSale.fromJson).toList();
+        if (await legacy.exists()) {
+          await _saveSales();
+          await legacy.delete();
+        }
       }
+      await _loadMedicines();
       notifyListeners();
     } catch (_) {}
   }
 
+  Future<File> _medicineFile() async {
+    final directory = await getApplicationSupportDirectory();
+    return File('${directory.path}/phyimacy_offline_medicines.enc');
+  }
+
+  Future<void> _loadMedicines() async {
+    final file = await _medicineFile();
+    if (!await file.exists()) return;
+    final raw = await _vault.decrypt(await file.readAsString());
+    if (raw.trim().isEmpty) return;
+    final decoded = await compute(_decodeQueueJson, raw);
+    _medicineQueue = decoded.map(PendingMedicineWrite.fromJson).toList();
+  }
+
   Future<void> _save() async {
+    await _saveSales();
+    await _saveMedicines();
+  }
+
+  Future<void> _saveSales() async {
     final file = await _file();
     final payload = await compute(_encodeQueueJson, [for (final sale in _queue) sale.toJson()]);
+    await file.writeAsString(await _vault.encrypt(payload), flush: true);
+  }
+
+  Future<void> _saveMedicines() async {
+    final file = await _medicineFile();
+    final payload = await compute(_encodeQueueJson, [for (final change in _medicineQueue) change.toJson()]);
     await file.writeAsString(await _vault.encrypt(payload), flush: true);
   }
 }

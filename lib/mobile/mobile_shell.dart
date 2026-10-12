@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:printing/printing.dart';
 
 import '../backend/auth_service.dart';
 import '../backend/expiry_priority.dart';
@@ -12,6 +14,7 @@ import '../backend/announcement_service.dart';
 import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/receipt_service.dart';
+import '../backend/report_export_service.dart';
 import '../backend/report_service.dart';
 import '../backend/shop_alerts.dart';
 import '../backend/subscription_service.dart';
@@ -21,6 +24,7 @@ import '../l10n/app_locale.dart';
 import '../theme/brand.dart';
 import '../widgets/app_notice.dart';
 import '../widgets/language_toggle.dart';
+import 'mobile_actions.dart';
 
 /// Phone companion. The selling counter and printer stay on the shop computer.
 class MobileShell extends StatefulWidget {
@@ -43,7 +47,7 @@ class MobileShell extends StatefulWidget {
   State<MobileShell> createState() => _MobileShellState();
 }
 
-class _MobileShellState extends State<MobileShell> {
+class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
   int _index = 0;
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(7, (_) => GlobalKey());
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _salesSub;
@@ -54,12 +58,17 @@ class _MobileShellState extends State<MobileShell> {
   List<QueryDocumentSnapshot<Map<String, dynamic>>>? _batches;
   Object? _shopError;
   var _shopReady = false;
+  var _locked = false;
+  var _leftApp = false;
 
   bool get _isShop => !widget.profile.isSuperAdmin;
+
+  bool get _canManageStock => widget.profile.role == 'admin' || widget.profile.can('medicines.create') || widget.profile.can('medicines.update') || widget.profile.can('inventory.adjust');
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (_isShop) _listenToShop();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final notice = widget.license?.renewalNotice;
@@ -125,7 +134,18 @@ class _MobileShellState extends State<MobileShell> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden || state == AppLifecycleState.detached) {
+      _leftApp = true;
+    }
+    if (state == AppLifecycleState.resumed && _leftApp && mounted) {
+      setState(() => _locked = true);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _salesSub?.cancel();
     _medicineSub?.cancel();
     _batchSub?.cancel();
@@ -152,6 +172,12 @@ class _MobileShellState extends State<MobileShell> {
         final pages = widget.profile.isSuperAdmin ? _adminPages() : _shopPages();
         final index = _index.clamp(0, pages.length - 1);
         final page = pages[index];
+        if (_locked) {
+          return Scaffold(
+            backgroundColor: PhyimacyBrand.forest,
+            body: _PhoneLock(email: widget.profile.email, onUnlocked: () => setState(() { _locked = false; _leftApp = false; })),
+          );
+        }
         return Scaffold(
           backgroundColor: PhyimacyBrand.cream,
           body: Column(
@@ -186,7 +212,7 @@ class _MobileShellState extends State<MobileShell> {
     return [
       _PhonePage(S.t('Dashboard', 'Dashibodi'), Icons.dashboard_rounded, _shopBody((shop) => _TodayView(shop: shop, showMoney: showMoney, onOpenAlerts: () => _select(4)))),
       _PhonePage(S.t('Sales', 'Mauzo'), Icons.payments_outlined, _shopBody((shop) => _SalesSummaryView(receipts: shop.receipts, showMoney: showMoney))),
-      _PhonePage(S.t('Stock', 'Stoku'), Icons.inventory_2_outlined, _shopBody((shop) => _StockView(low: shop.lowItems, expiring: shop.expiryItems))),
+      _PhonePage(S.t('Stock', 'Stoku'), Icons.inventory_2_outlined, _shopBody((shop) => _StockView(low: shop.lowItems, expiring: shop.expiryItems, canManage: _canManageStock))),
       _PhonePage(S.t('Reports', 'Ripoti'), Icons.bar_chart_rounded, _ReportsView(showMoney: showMoney)),
       _PhonePage(S.t('Alerts', 'Arifa'), Icons.notifications_outlined, _shopBody((shop) => _NotificationsView(shop: shop))),
       _PhonePage(S.t('Subscription', 'Usajili'), Icons.workspace_premium_outlined, _SubscriptionView(shell: widget)),
@@ -197,8 +223,8 @@ class _MobileShellState extends State<MobileShell> {
   List<_PhonePage> _adminPages() {
     return [
       _PhonePage(S.t('Dashboard', 'Dashibodi'), Icons.dashboard_rounded, const _AdminDashboard()),
-      _PhonePage(S.t('Sales', 'Mauzo'), Icons.payments_outlined, const _ShopDeskNote(icon: Icons.point_of_sale_rounded)),
-      _PhonePage(S.t('Stock', 'Stoku'), Icons.inventory_2_outlined, const _ShopDeskNote(icon: Icons.inventory_2_outlined)),
+      _PhonePage(S.t('New shop', 'Duka jipya'), Icons.add_business_rounded, const MobileCreateShopPage()),
+      _PhonePage(S.t('Token', 'Token'), Icons.vpn_key_outlined, const MobileTokenPage()),
       _PhonePage(S.t('Reports', 'Ripoti'), Icons.bar_chart_rounded, const _AdminDashboard(compact: true)),
       _PhonePage(S.t('Alerts', 'Arifa'), Icons.notifications_outlined, const _AnnouncementsOnly()),
       _PhonePage(S.t('Subscription', 'Usajili'), Icons.workspace_premium_outlined, const _ShopsPage()),
@@ -532,18 +558,32 @@ Widget _receiptCard(_PhoneReceipt receipt, bool showMoney) {
 }
 
 class _StockView extends StatelessWidget {
-  const _StockView({required this.low, required this.expiring});
+  const _StockView({required this.low, required this.expiring, this.canManage = false});
 
   final List<_LowMedicine> low;
   final List<_ExpiryLine> expiring;
+  final bool canManage;
 
   @override
   Widget build(BuildContext context) {
     if (low.isEmpty && expiring.isEmpty) {
-      return _EmptyState(
-        icon: Icons.verified_outlined,
-        title: S.t('Stock looks fine', 'Stoku iko sawa'),
-        body: S.t('No low medicines and nothing is close to expiry.', 'Hakuna dawa chini ya kiwango, wala zinazokaribia kuisha muda.'),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          if (canManage) ...[
+            FilledButton.icon(
+              onPressed: () => showMobileAddMedicine(context),
+              icon: const Icon(Icons.add_rounded),
+              label: Text(S.t('Add medicine', 'Ongeza dawa')),
+            ),
+            const SizedBox(height: 16),
+          ],
+          _EmptyState(
+            icon: Icons.verified_outlined,
+            title: S.t('Stock looks fine', 'Stoku iko sawa'),
+            body: S.t('No low medicines and nothing is close to expiry.', 'Hakuna dawa chini ya kiwango, wala zinazokaribia kuisha muda.'),
+          ),
+        ],
       );
     }
     final expiredCount = expiring.where((item) => item.expired).length;
@@ -551,6 +591,14 @@ class _StockView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
+        if (canManage) ...[
+          FilledButton.icon(
+            onPressed: () => showMobileAddMedicine(context),
+            icon: const Icon(Icons.add_rounded),
+            label: Text(S.t('Add medicine', 'Ongeza dawa')),
+          ),
+          const SizedBox(height: 12),
+        ],
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -568,24 +616,28 @@ class _StockView extends StatelessWidget {
         else
           for (final item in low) ...[
             _WhiteCard(
-              child: Row(
-                children: [
-                  const Icon(Icons.medication_outlined, color: PhyimacyBrand.teal),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.name, style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
-                        const SizedBox(height: 2),
-                        Text(
-                          S.t('${item.stock} left · reorder ${item.reorder}', 'Zimebaki ${item.stock} · kiwango ${item.reorder}'),
-                          style: _cardHint(),
-                        ),
-                      ],
+              child: InkWell(
+                onTap: canManage ? () => showMobileEditStock(context, medicineId: item.id, name: item.name, stock: item.stock) : null,
+                child: Row(
+                  children: [
+                    const Icon(Icons.medication_outlined, color: PhyimacyBrand.teal),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.name, style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
+                          const SizedBox(height: 2),
+                          Text(
+                            S.t('${item.stock} left · reorder ${item.reorder}', 'Zimebaki ${item.stock} · kiwango ${item.reorder}'),
+                            style: _cardHint(),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    if (canManage) const Icon(Icons.edit_outlined, color: PhyimacyBrand.muted, size: 18),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -718,11 +770,14 @@ class _AccountPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        const MobileUpdateCard(),
+        const SizedBox(height: 12),
+        MobileTeamCard(profile: shell.profile),
         _WhiteCard(
           child: Text(
             S.t(
-              'Selling and printing stay on the shop computer. This phone has the dashboard, sales summary, stock, reports, alerts, subscription, and profile.',
-              'Uuzaji na printa hubaki kwenye kompyuta ya duka. Simu ina dashibodi, muhtasari wa mauzo, stoku, ripoti, arifa, usajili, na wasifu.',
+              'The phone locks when you leave the app. Selling and printing stay on the shop computer.',
+              'Simu inafungwa ukiondoka kwenye programu. Uuzaji na printa hubaki kwenye kompyuta ya duka.',
             ),
             style: GoogleFonts.inter(fontSize: 13, height: 1.45, color: PhyimacyBrand.muted),
           ),
@@ -1110,6 +1165,27 @@ class _ReportsViewState extends State<_ReportsView> {
                   ],
                 ),
                 const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      try {
+                        final bytes = await ReportExportService().buildPdf(
+                          report: report,
+                          pharmacyName: (TenantContext.instance.pharmacyName ?? 'PharmSpecio').trim(),
+                          rangeLabel: _month ? S.t('This month', 'Mwezi huu') : S.t('This week', 'Wiki hii'),
+                        );
+                        await Printing.sharePdf(bytes: bytes, filename: 'pharmspecio-report.pdf');
+                        if (context.mounted) showAppNotice(context, S.t('Report ready to share', 'Ripoti iko tayari kushirikiwa'));
+                      } catch (_) {
+                        if (context.mounted) showAppNotice(context, S.t('Could not share the report', 'Imeshindikana kushiriki ripoti'), kind: AppNoticeKind.error);
+                      }
+                    },
+                    icon: const Icon(Icons.ios_share_rounded),
+                    label: Text(S.t('Share report', 'Shiriki ripoti')),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Align(alignment: Alignment.centerLeft, child: Text(S.t('Top medicines', 'Dawa zinazoongoza'), style: _sectionTitle())),
                 const SizedBox(height: 8),
                 if (top.isEmpty)
@@ -1495,24 +1571,6 @@ class _AdminDashboard extends StatelessWidget {
   }
 }
 
-class _ShopDeskNote extends StatelessWidget {
-  const _ShopDeskNote({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return _EmptyState(
-      icon: icon,
-      title: S.t('Open a shop login', 'Ingia kwa akaunti ya duka'),
-      body: S.t(
-        'Sales, stock, and reports belong to each shop. This administrator login shows shops, licenses, and alerts.',
-        'Mauzo, stoku, na ripoti viko ndani ya kila duka. Akaunti hii ya msimamizi inaonyesha maduka, leseni, na arifa.',
-      ),
-    );
-  }
-}
-
 class _RangeChips extends StatelessWidget {
   const _RangeChips({required this.labels, required this.index, required this.onChanged});
 
@@ -1642,7 +1700,7 @@ class _ShopPicture {
     final low = <_LowMedicine>[
       for (final medicine in medicineModels)
         if (medicine.quantityOnHand <= medicine.reorderLevel)
-          _LowMedicine(name: medicine.name, stock: medicine.quantityOnHand, reorder: medicine.reorderLevel),
+          _LowMedicine(id: medicine.id, name: medicine.name, stock: medicine.quantityOnHand, reorder: medicine.reorderLevel),
     ]..sort((a, b) => a.stock.compareTo(b.stock));
 
     return _ShopPicture(
@@ -1701,7 +1759,8 @@ class _PhoneReceipt {
 }
 
 class _LowMedicine {
-  const _LowMedicine({required this.name, required this.stock, required this.reorder});
+  const _LowMedicine({required this.id, required this.name, required this.stock, required this.reorder});
+  final String id;
   final String name;
   final int stock;
   final int reorder;
@@ -1924,4 +1983,83 @@ String _compactMoney(int minor) {
   if (minor >= 1000000) return '${(minor / 1000000).toStringAsFixed(1)}M';
   if (minor >= 1000) return '${(minor / 1000).toStringAsFixed(minor >= 10000 ? 0 : 1)}k';
   return '$minor';
+}
+
+class _PhoneLock extends StatefulWidget {
+  const _PhoneLock({required this.email, required this.onUnlocked});
+
+  final String email;
+  final VoidCallback onUnlocked;
+
+  @override
+  State<_PhoneLock> createState() => _PhoneLockState();
+}
+
+class _PhoneLockState extends State<_PhoneLock> {
+  final _password = TextEditingController();
+  var _busy = false;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _unlock() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = widget.email.trim();
+    if (user == null || email.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: _password.text),
+      );
+      widget.onUnlocked();
+      if (mounted) showAppNotice(context, S.t('Shop opened', 'Duka limefunguka'));
+    } on FirebaseAuthException {
+      if (mounted) showAppNotice(context, S.t('Wrong password.', 'Nenosiri si sahihi.'), kind: AppNoticeKind.error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('PHARMSPECIO', style: GoogleFonts.inter(color: PhyimacyBrand.gold, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
+            const SizedBox(height: 12),
+            Text(S.t('Locked', 'Imefungwa'), style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              S.t('Enter your password to open the shop again.', 'Weka nenosiri lako kufungua duka tena.'),
+              style: GoogleFonts.inter(color: Colors.white70, height: 1.4),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _password,
+              obscureText: true,
+              style: const TextStyle(color: PhyimacyBrand.ink),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                labelText: S.t('Password', 'Nenosiri'),
+              ),
+              onSubmitted: (_) => _busy ? null : _unlock(),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy ? null : _unlock,
+              style: FilledButton.styleFrom(backgroundColor: PhyimacyBrand.gold, foregroundColor: PhyimacyBrand.forest),
+              child: Text(_busy ? S.t('Checking...', 'Inaangalia...') : S.t('Unlock', 'Fungua')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
