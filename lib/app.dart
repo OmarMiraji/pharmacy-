@@ -6378,22 +6378,29 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                             const SizedBox(height: 20),
                             _PlanOptionCard(
                               title: S.t('Monthly', 'Kila mwezi'),
-                              price: 'TZS 120,000',
+                              price: 'TZS 50,000',
                               detail: S.t('Best for small pharmacies', 'Inafaa maduka madogo'),
                               badge: S.t('Popular', 'Inayopendwa'),
                             ),
                             const SizedBox(height: 12),
                             _PlanOptionCard(
+                              title: S.t('3 Months', 'Miezi 3'),
+                              price: 'TZS 150,000',
+                              detail: S.t('One quarter of access', 'Robo mwaka wa matumizi'),
+                              badge: S.t('Quarter', 'Robo'),
+                            ),
+                            const SizedBox(height: 12),
+                            _PlanOptionCard(
                               title: S.t('6 Months', 'Miezi 6'),
-                              price: 'TZS 600,000',
-                              detail: S.t('Lower effective monthly cost', 'Bei ya mwezi inakuwa nafuu'),
+                              price: 'TZS 300,000',
+                              detail: S.t('Half a year of access', 'Nusu mwaka wa matumizi'),
                               badge: S.t('Value', 'Thamani'),
                             ),
                             const SizedBox(height: 12),
                             _PlanOptionCard(
                               title: S.t('Yearly', 'Mwaka'),
-                              price: 'TZS 1,100,000',
-                              detail: S.t('Maximum savings and full access', 'Akiba kubwa na matumizi kamili'),
+                              price: 'TZS 600,000',
+                              detail: S.t('Full year of access', 'Mwaka mzima wa matumizi'),
                               badge: S.t('Best value', 'Nafuu zaidi'),
                             ),
                             if (!widget.embedded) ...[
@@ -6480,8 +6487,8 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                               const SizedBox(height: 10),
                               Text(
                                 S.t(
-                                  '1. Pay monthly, 6 months, or yearly.\n2. Support sends you an activation code.\n3. Enter the code here to unlock the shop.',
-                                  '1. Lipa kwa mwezi, miezi 6, au mwaka.\n2. Unapewa namba ya kuwezesha.\n3. Weka namba hapa ili kufungua duka.',
+                                  '1. Pay monthly, 3 months, 6 months, or yearly.\n2. Support sends you an activation code.\n3. Enter the code here to unlock the shop.',
+                                  '1. Lipa kwa mwezi, miezi 3, miezi 6, au mwaka.\n2. Unapewa namba ya kuwezesha.\n3. Weka namba hapa ili kufungua duka.',
                                 ),
                                 style: const TextStyle(color: Color(0xff68807d), height: 1.7),
                               ),

@@ -211,6 +211,10 @@ service cloud.firestore {
       return inShop(id) && hasPermission(permission);
     }
 
+    function shopIdOf(data) {
+      return data != null && 'pharmacyId' in data && data.pharmacyId is string ? data.pharmacyId : '';
+    }
+
     function canWriteTenant(id, permission) {
       return inShop(id)
         && activeUserRecord()
@@ -438,7 +442,12 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
 
       match /items/{itemId} {
-        allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'purchases.view');
+        allow read: if isSuperAdmin()
+          || canReadTenant(shopIdOf(resource.data), 'purchases.view')
+          || (
+            exists(/databases/$(database)/documents/purchases/$(purchaseId))
+            && canReadTenant(shopIdOf(get(/databases/$(database)/documents/purchases/$(purchaseId)).data), 'purchases.view')
+          );
         allow create: if canWriteTenant(request.resource.data.pharmacyId, 'purchases.create')
           || canWriteTenant(request.resource.data.pharmacyId, 'purchases.receive');
         allow update, delete: if isSuperAdmin();
@@ -460,7 +469,12 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
 
       match /items/{itemId} {
-        allow read: if isSuperAdmin() || canReadTenant(resource.data.pharmacyId, 'sales.view');
+        allow read: if isSuperAdmin()
+          || canReadTenant(shopIdOf(resource.data), 'sales.view')
+          || (
+            exists(/databases/$(database)/documents/sales/$(saleId))
+            && canReadTenant(shopIdOf(get(/databases/$(database)/documents/sales/$(saleId)).data), 'sales.view')
+          );
         allow create: if canWriteTenant(request.resource.data.pharmacyId, 'sales.create')
           && request.resource.data.quantity is int
           && request.resource.data.quantity > 0

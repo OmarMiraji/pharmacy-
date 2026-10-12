@@ -318,10 +318,10 @@ class _SubscriptionAdminScreenState extends State<SubscriptionAdminScreen> {
               initialValue: _plan,
               decoration: const InputDecoration(labelText: 'Plan'),
               items: const [
-                DropdownMenuItem(value: 'monthly', child: Text('Monthly · 30 days')),
-                DropdownMenuItem(value: 'quarterly', child: Text('Quarterly · 90 days')),
-                DropdownMenuItem(value: 'biannual', child: Text('6 months · 180 days')),
-                DropdownMenuItem(value: 'yearly', child: Text('Yearly · 365 days')),
+                DropdownMenuItem(value: 'monthly', child: Text('Monthly · TZS 50,000 · 30 days')),
+                DropdownMenuItem(value: 'quarterly', child: Text('3 months · TZS 150,000 · 90 days')),
+                DropdownMenuItem(value: 'biannual', child: Text('6 months · TZS 300,000 · 180 days')),
+                DropdownMenuItem(value: 'yearly', child: Text('Yearly · TZS 600,000 · 365 days')),
                 DropdownMenuItem(value: 'custom', child: Text('Custom days')),
               ],
               onChanged: (value) {

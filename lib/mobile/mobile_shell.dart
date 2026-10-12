@@ -212,7 +212,7 @@ class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
     return [
       _PhonePage(S.t('Dashboard', 'Dashibodi'), Icons.dashboard_rounded, _shopBody((shop) => _TodayView(shop: shop, showMoney: showMoney, onOpenAlerts: () => _select(4)))),
       _PhonePage(S.t('Sales', 'Mauzo'), Icons.payments_outlined, _shopBody((shop) => _SalesSummaryView(receipts: shop.receipts, showMoney: showMoney))),
-      _PhonePage(S.t('Stock', 'Stoku'), Icons.inventory_2_outlined, _shopBody((shop) => _StockView(low: shop.lowItems, expiring: shop.expiryItems, canManage: _canManageStock))),
+      _PhonePage(S.t('Stock', 'Stoku'), Icons.inventory_2_outlined, _shopBody((shop) => _StockView(medicines: shop.medicines, expiring: shop.expiryItems, canManage: _canManageStock))),
       _PhonePage(S.t('Reports', 'Ripoti'), Icons.bar_chart_rounded, _ReportsView(showMoney: showMoney)),
       _PhonePage(S.t('Alerts', 'Arifa'), Icons.notifications_outlined, _shopBody((shop) => _NotificationsView(shop: shop))),
       _PhonePage(S.t('Subscription', 'Usajili'), Icons.workspace_premium_outlined, _SubscriptionView(shell: widget)),
@@ -557,70 +557,89 @@ Widget _receiptCard(_PhoneReceipt receipt, bool showMoney) {
   );
 }
 
-class _StockView extends StatelessWidget {
-  const _StockView({required this.low, required this.expiring, this.canManage = false});
+class _StockView extends StatefulWidget {
+  const _StockView({required this.medicines, required this.expiring, this.canManage = false});
 
-  final List<_LowMedicine> low;
+  final List<Medicine> medicines;
   final List<_ExpiryLine> expiring;
   final bool canManage;
 
   @override
+  State<_StockView> createState() => _StockViewState();
+}
+
+class _StockViewState extends State<_StockView> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (low.isEmpty && expiring.isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        children: [
-          if (canManage) ...[
-            FilledButton.icon(
-              onPressed: () => showMobileAddMedicine(context),
-              icon: const Icon(Icons.add_rounded),
-              label: Text(S.t('Add medicine', 'Ongeza dawa')),
-            ),
-            const SizedBox(height: 16),
-          ],
-          _EmptyState(
-            icon: Icons.verified_outlined,
-            title: S.t('Stock looks fine', 'Stoku iko sawa'),
-            body: S.t('No low medicines and nothing is close to expiry.', 'Hakuna dawa chini ya kiwango, wala zinazokaribia kuisha muda.'),
-          ),
-        ],
-      );
-    }
-    final expiredCount = expiring.where((item) => item.expired).length;
-    final soonCount = expiring.length - expiredCount;
+    final query = _search.text.trim().toLowerCase();
+    final visible = widget.medicines.where((item) => query.isEmpty || item.name.toLowerCase().contains(query)).toList();
+    final lowCount = widget.medicines.where((item) => item.quantityOnHand <= item.reorderLevel).length;
+    final expiredCount = widget.expiring.where((item) => item.expired).length;
+    final soonCount = widget.expiring.length - expiredCount;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        if (canManage) ...[
+        TextField(
+          controller: _search,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: S.t('Search a medicine', 'Tafuta dawa'),
+            prefixIcon: const Icon(Icons.search_rounded),
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: PhyimacyBrand.line)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: PhyimacyBrand.line)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (widget.canManage)
           FilledButton.icon(
             onPressed: () => showMobileAddMedicine(context),
             icon: const Icon(Icons.add_rounded),
             label: Text(S.t('Add medicine', 'Ongeza dawa')),
+            style: FilledButton.styleFrom(
+              backgroundColor: PhyimacyBrand.forest,
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
           ),
-          const SizedBox(height: 12),
-        ],
+        if (widget.canManage) const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            _CountChip(label: S.t('Low', 'Chini'), value: '${low.length}'),
+            _CountChip(label: S.t('Medicines', 'Dawa'), value: '${widget.medicines.length}'),
+            _CountChip(label: S.t('Low', 'Chini'), value: '$lowCount'),
             _CountChip(label: S.t('Expiring', 'Zinaisha'), value: '$soonCount'),
             _CountChip(label: S.t('Expired', 'Zimeisha'), value: '$expiredCount'),
           ],
         ),
         const SizedBox(height: 14),
-        Text(S.t('Low stock', 'Zilizo chini'), style: _sectionTitle()),
+        Text(S.t('Shelf', 'Rafu'), style: _sectionTitle()),
         const SizedBox(height: 8),
-        if (low.isEmpty)
-          _WhiteCard(child: Text(S.t('None right now.', 'Hakuna kwa sasa.'), style: _cardHint()))
+        if (visible.isEmpty)
+          _WhiteCard(child: Text(S.t('No medicine matches that search.', 'Hakuna dawa inayofanana na utafutaji.'), style: _cardHint()))
         else
-          for (final item in low) ...[
+          for (final item in visible) ...[
             _WhiteCard(
               child: InkWell(
-                onTap: canManage ? () => showMobileEditStock(context, medicineId: item.id, name: item.name, stock: item.stock) : null,
+                onTap: widget.canManage ? () => showMobileEditMedicine(context, item) : null,
                 child: Row(
                   children: [
-                    const Icon(Icons.medication_outlined, color: PhyimacyBrand.teal),
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(color: PhyimacyBrand.cream, borderRadius: BorderRadius.circular(14)),
+                      child: const Icon(Icons.medication_outlined, color: PhyimacyBrand.teal),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -629,13 +648,23 @@ class _StockView extends StatelessWidget {
                           Text(item.name, style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: PhyimacyBrand.ink)),
                           const SizedBox(height: 2),
                           Text(
-                            S.t('${item.stock} left · reorder ${item.reorder}', 'Zimebaki ${item.stock} · kiwango ${item.reorder}'),
+                            'TZS ${item.sellingPriceMinor} · ${item.unit}',
                             style: _cardHint(),
                           ),
                         ],
                       ),
                     ),
-                    if (canManage) const Icon(Icons.edit_outlined, color: PhyimacyBrand.muted, size: 18),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('${item.quantityOnHand}', style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: item.quantityOnHand <= item.reorderLevel ? const Color(0xFFC2410C) : PhyimacyBrand.forest)),
+                        Text(S.t('left', 'zimebaki'), style: _cardHint()),
+                      ],
+                    ),
+                    if (widget.canManage) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.edit_outlined, color: PhyimacyBrand.muted, size: 18),
+                    ],
                   ],
                 ),
               ),
@@ -645,10 +674,10 @@ class _StockView extends StatelessWidget {
         const SizedBox(height: 10),
         Text(S.t('Nearing expiry', 'Zinazokaribia kuisha muda'), style: _sectionTitle()),
         const SizedBox(height: 8),
-        if (expiring.isEmpty)
+        if (widget.expiring.isEmpty)
           _WhiteCard(child: Text(S.t('None in the next 60 days.', 'Hakuna katika siku 60 zijazo.'), style: _cardHint()))
         else
-          for (final item in expiring) ...[
+          for (final item in widget.expiring) ...[
             _WhiteCard(
               child: Row(
                 children: [
@@ -1433,9 +1462,10 @@ class _SubscriptionViewState extends State<_SubscriptionView> {
           ),
         ),
         const SizedBox(height: 12),
-        _planCard(S.t('Monthly', 'Kila mwezi'), 'TZS 120,000', S.t('Best for small pharmacies', 'Inafaa maduka madogo')),
-        _planCard(S.t('6 months', 'Miezi 6'), 'TZS 600,000', S.t('Lower monthly cost', 'Bei ya mwezi inakuwa nafuu')),
-        _planCard(S.t('Yearly', 'Mwaka'), 'TZS 1,100,000', S.t('Full year of access', 'Mwaka mzima wa matumizi')),
+        _planCard(S.t('Monthly', 'Kila mwezi'), 'TZS 50,000', S.t('Best for small pharmacies', 'Inafaa maduka madogo')),
+        _planCard(S.t('3 months', 'Miezi 3'), 'TZS 150,000', S.t('One quarter of access', 'Robo mwaka wa matumizi')),
+        _planCard(S.t('6 months', 'Miezi 6'), 'TZS 300,000', S.t('Half a year of access', 'Nusu mwaka wa matumizi')),
+        _planCard(S.t('Yearly', 'Mwaka'), 'TZS 600,000', S.t('Full year of access', 'Mwaka mzima wa matumizi')),
         if (canActivate) ...[
           const SizedBox(height: 4),
           _WhiteCard(
@@ -1648,6 +1678,7 @@ class _ShopPicture {
     required this.receipts,
     required this.lowItems,
     required this.expiryItems,
+    required this.medicines,
   });
 
   final int todayMinor;
@@ -1656,6 +1687,7 @@ class _ShopPicture {
   final List<_PhoneReceipt> receipts;
   final List<_LowMedicine> lowItems;
   final List<_ExpiryLine> expiryItems;
+  final List<Medicine> medicines;
 
   int get alertCount => lowItems.length + expiryItems.length;
 
@@ -1723,6 +1755,7 @@ class _ShopPicture {
           ),
       ],
       lowItems: low,
+      medicines: medicineModels..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())),
       expiryItems: [
         for (final alert in alerts)
           _ExpiryLine(
@@ -2026,21 +2059,32 @@ class _PhoneLockState extends State<_PhoneLock> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('PHARMSPECIO', style: GoogleFonts.inter(color: PhyimacyBrand.gold, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
-            const SizedBox(height: 12),
-            Text(S.t('Locked', 'Imefungwa'), style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Text(
-              S.t('Enter your password to open the shop again.', 'Weka nenosiri lako kufungua duka tena.'),
-              style: GoogleFonts.inter(color: Colors.white70, height: 1.4),
-            ),
-            const SizedBox(height: 24),
-            TextField(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(24)),
+                child: const Icon(Icons.lock_rounded, color: PhyimacyBrand.gold, size: 34),
+              ),
+              const SizedBox(height: 18),
+              Text('PHARMSPECIO', style: GoogleFonts.inter(color: PhyimacyBrand.gold, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
+              const SizedBox(height: 8),
+              Text(S.t('Locked', 'Imefungwa'), style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                S.t('Enter your password to open the shop again.', 'Weka nenosiri lako kufungua duka tena.'),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(color: Colors.white70, height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              TextField(
               controller: _password,
               obscureText: true,
               style: const TextStyle(color: PhyimacyBrand.ink),
@@ -2057,7 +2101,9 @@ class _PhoneLockState extends State<_PhoneLock> {
               style: FilledButton.styleFrom(backgroundColor: PhyimacyBrand.gold, foregroundColor: PhyimacyBrand.forest),
               child: Text(_busy ? S.t('Checking...', 'Inaangalia...') : S.t('Unlock', 'Fungua')),
             ),
-          ],
+            ],
+            ),
+          ),
         ),
       ),
     );

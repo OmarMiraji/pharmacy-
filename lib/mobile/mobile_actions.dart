@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,7 +6,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../backend/app_update_service.dart';
+import '../backend/firestore_collections.dart';
 import '../backend/medicine_service.dart';
+import '../backend/models.dart';
+import '../backend/selling_units.dart';
 import '../backend/permissions.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/subscription_service.dart';
@@ -207,85 +211,249 @@ class MobileTeamCard extends StatelessWidget {
   }
 }
 
-Future<void> showMobileAddMedicine(BuildContext context) async {
-  final name = TextEditingController();
-  final price = TextEditingController();
-  final qty = TextEditingController(text: '0');
-  final saved = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(S.t('Add medicine', 'Ongeza dawa')),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(controller: name, decoration: InputDecoration(labelText: S.t('Name', 'Jina'))),
-          const SizedBox(height: 10),
-          TextField(controller: price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Selling price (TZS)', 'Bei ya kuuza (TZS)'))),
-          const SizedBox(height: 10),
-          TextField(controller: qty, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: S.t('Quantity now', 'Idadi sasa'))),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(S.t('Cancel', 'Ghairi'))),
-        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(S.t('Save', 'Hifadhi'))),
-      ],
-    ),
-  );
-  if (saved == true) {
-    try {
-      final id = await MedicineService().createQuickMedicine(
-        name: name.text,
-        sellingPriceMinor: int.parse(price.text.trim()),
-        createdBy: FirebaseAuth.instance.currentUser?.uid ?? 'staff',
-      );
-      final count = int.tryParse(qty.text.trim()) ?? 0;
-      if (count > 0) {
-        await MedicineService().setOnHandQuantity(
-          medicineId: id,
-          quantity: count,
-          createdBy: FirebaseAuth.instance.currentUser?.uid ?? 'staff',
-        );
-      }
-      if (context.mounted) showAppNotice(context, S.t('Medicine saved', 'Dawa imehifadhiwa'));
-    } catch (error) {
-      if (context.mounted) showAppNotice(context, '$error'.replaceFirst('Bad state: ', '').replaceFirst('Invalid argument(s): ', ''), kind: AppNoticeKind.error);
-    }
-  }
-  name.dispose();
-  price.dispose();
-  qty.dispose();
+Future<void> showMobileAddMedicine(BuildContext context) {
+  return showMobileMedicineSheet(context);
 }
 
-Future<void> showMobileEditStock(BuildContext context, {required String medicineId, required String name, required int stock}) async {
-  final qty = TextEditingController(text: '$stock');
-  final saved = await showDialog<bool>(
+Future<void> showMobileEditMedicine(BuildContext context, Medicine medicine) {
+  return showMobileMedicineSheet(context, medicine: medicine);
+}
+
+Future<void> showMobileMedicineSheet(BuildContext context, {Medicine? medicine}) {
+  return showModalBottomSheet<void>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(name),
-      content: TextField(
-        controller: qty,
-        keyboardType: TextInputType.number,
-        decoration: InputDecoration(labelText: S.t('Quantity on the shelf', 'Idadi rafuni')),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(S.t('Cancel', 'Ghairi'))),
-        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(S.t('Save', 'Hifadhi'))),
-      ],
-    ),
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) => _MedicineSheet(medicine: medicine),
   );
-  if (saved == true) {
+}
+
+class _MedicineSheet extends StatefulWidget {
+  const _MedicineSheet({this.medicine});
+
+  final Medicine? medicine;
+
+  @override
+  State<_MedicineSheet> createState() => _MedicineSheetState();
+}
+
+class _MedicineSheetState extends State<_MedicineSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _sell;
+  late final TextEditingController _buy;
+  late final TextEditingController _qty;
+  late final TextEditingController _reorder;
+  late String _unit;
+  late bool _prescription;
+  var _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final medicine = widget.medicine;
+    _name = TextEditingController(text: medicine?.name ?? '');
+    _sell = TextEditingController(text: medicine == null ? '' : '${medicine.sellingPriceMinor}');
+    _buy = TextEditingController(text: medicine == null ? '' : '${medicine.purchasePriceMinor}');
+    _qty = TextEditingController(text: '${medicine?.quantityOnHand ?? 0}');
+    _reorder = TextEditingController(text: '${medicine?.reorderLevel ?? 0}');
+    final unit = BaseUnits.normalize(medicine?.unit ?? 'Tablet');
+    _unit = BaseUnits.options.contains(unit) ? unit : 'Tablet';
+    _prescription = medicine?.requiresPrescription ?? false;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _sell.dispose();
+    _buy.dispose();
+    _qty.dispose();
+    _reorder.dispose();
+    super.dispose();
+  }
+
+  int? _whole(String raw) {
+    final value = int.tryParse(raw.trim().replaceAll(',', ''));
+    if (value == null || value < 0) return null;
+    return value;
+  }
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    final sell = _whole(_sell.text);
+    final buy = _whole(_buy.text.isEmpty ? '0' : _buy.text);
+    final qty = _whole(_qty.text.isEmpty ? '0' : _qty.text);
+    final reorder = _whole(_reorder.text.isEmpty ? '0' : _reorder.text);
+    if (name.isEmpty || sell == null || buy == null || qty == null || reorder == null) {
+      showAppNotice(context, S.t('Name and prices are required. Use whole numbers.', 'Jina na bei zinahitajika. Tumia namba kamili.'), kind: AppNoticeKind.error);
+      return;
+    }
+    setState(() => _busy = true);
+    final actor = FirebaseAuth.instance.currentUser?.uid ?? 'staff';
     try {
-      await MedicineService().setOnHandQuantity(
-        medicineId: medicineId,
-        quantity: int.parse(qty.text.trim()),
-        createdBy: FirebaseAuth.instance.currentUser?.uid ?? 'staff',
-      );
-      if (context.mounted) showAppNotice(context, S.t('Stock updated', 'Stoku imesasishwa'));
+      final service = MedicineService();
+      final existing = widget.medicine;
+      if (existing == null) {
+        final id = await service.createQuickMedicine(name: name, sellingPriceMinor: sell, createdBy: actor);
+        final snap = await FirebaseFirestore.instance.collection(FirestoreCollections.medicines).doc(id).get();
+        final data = snap.data() ?? const <String, dynamic>{};
+        await service.updateMedicine(
+          medicineId: id,
+          name: name,
+          sku: (data['sku'] as String?) ?? '',
+          categoryId: (data['categoryId'] as String?) ?? '',
+          unit: _unit,
+          purchasePriceMinor: buy,
+          sellingPriceMinor: sell,
+          reorderLevel: reorder,
+          requiresPrescription: _prescription,
+        );
+        if (qty > 0) {
+          await service.setOnHandQuantity(medicineId: id, quantity: qty, createdBy: actor);
+        }
+      } else {
+        await service.updateMedicine(
+          medicineId: existing.id,
+          name: name,
+          sku: existing.sku,
+          categoryId: existing.categoryId,
+          unit: _unit,
+          purchasePriceMinor: buy,
+          sellingPriceMinor: sell,
+          reorderLevel: reorder,
+          requiresPrescription: _prescription,
+          packSize: existing.packSize,
+          stripSize: existing.stripSize,
+          boxSize: existing.boxSize,
+          minSaleQty: existing.minSaleQty,
+          allowLooseSale: existing.allowLooseSale,
+          allowHalfBlister: existing.allowHalfBlister,
+        );
+        if (qty != existing.quantityOnHand) {
+          await service.setOnHandQuantity(medicineId: existing.id, quantity: qty, createdBy: actor);
+        }
+      }
+      if (!mounted) return;
+      Navigator.pop(context);
+      showAppNotice(context, S.t('Medicine saved', 'Dawa imehifadhiwa'));
     } catch (error) {
-      if (context.mounted) showAppNotice(context, '$error'.replaceFirst('Bad state: ', ''), kind: AppNoticeKind.error);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showAppNotice(
+        context,
+        '$error'.replaceFirst('Bad state: ', '').replaceFirst('Invalid argument(s): ', ''),
+        kind: AppNoticeKind.error,
+      );
     }
   }
-  qty.dispose();
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.medicine != null;
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(color: PhyimacyBrand.line, borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  editing ? S.t('Edit medicine', 'Hariri dawa') : S.t('Add medicine', 'Ongeza dawa'),
+                  style: GoogleFonts.playfairDisplay(fontSize: 26, fontWeight: FontWeight.w700, color: PhyimacyBrand.ink),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  S.t('Name, prices, shelf quantity, and reorder level.', 'Jina, bei, idadi rafuni, na kiwango cha kuagiza tena.'),
+                  style: GoogleFonts.inter(color: PhyimacyBrand.muted, height: 1.35),
+                ),
+                const SizedBox(height: 16),
+                _field(_name, S.t('Medicine name', 'Jina la dawa')),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _field(_sell, S.t('Selling price', 'Bei ya kuuza'), number: true)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _field(_buy, S.t('Buying price', 'Bei ya kununua'), number: true)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _field(_qty, S.t('Quantity now', 'Idadi sasa'), number: true)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _field(_reorder, S.t('Reorder at', 'Agiza tena ukifika'), number: true)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _unit,
+                  decoration: _decoration(S.t('Unit', 'Kipimo')),
+                  items: [
+                    for (final option in BaseUnits.options)
+                      DropdownMenuItem(value: option, child: Text(option)),
+                  ],
+                  onChanged: _busy ? null : (value) => setState(() => _unit = value ?? _unit),
+                ),
+                const SizedBox(height: 6),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: PhyimacyBrand.teal,
+                  title: Text(S.t('Needs a prescription', 'Inahitaji agizo la daktari'), style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  value: _prescription,
+                  onChanged: _busy ? null : (value) => setState(() => _prescription = value),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: _busy ? null : _save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: PhyimacyBrand.forest,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: Text(_busy ? S.t('Saving...', 'Inahifadhi...') : S.t('Save medicine', 'Hifadhi dawa'), style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: PhyimacyBrand.cream,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: PhyimacyBrand.line)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: PhyimacyBrand.line)),
+    );
+  }
+
+  Widget _field(TextEditingController controller, String label, {bool number = false}) {
+    return TextField(
+      controller: controller,
+      keyboardType: number ? TextInputType.number : TextInputType.text,
+      inputFormatters: number ? [FilteringTextInputFormatter.digitsOnly] : null,
+      decoration: _decoration(label),
+    );
+  }
 }
 
 class MobileCreateShopPage extends StatefulWidget {
@@ -390,8 +558,10 @@ class _MobileTokenPageState extends State<MobileTokenPage> {
           initialValue: _plan,
           decoration: InputDecoration(labelText: S.t('Plan', 'Mpango')),
           items: [
-            for (final plan in SubscriptionService.planDurations.keys)
-              DropdownMenuItem(value: plan, child: Text('$plan · ${SubscriptionService.planDurations[plan]} ${S.t('days', 'siku')}')),
+            DropdownMenuItem(value: 'monthly', child: Text(S.t('Monthly · TZS 50,000', 'Kila mwezi · TZS 50,000'))),
+            DropdownMenuItem(value: 'quarterly', child: Text(S.t('3 months · TZS 150,000', 'Miezi 3 · TZS 150,000'))),
+            DropdownMenuItem(value: 'biannual', child: Text(S.t('6 months · TZS 300,000', 'Miezi 6 · TZS 300,000'))),
+            DropdownMenuItem(value: 'yearly', child: Text(S.t('Yearly · TZS 600,000', 'Mwaka · TZS 600,000'))),
           ],
           onChanged: (value) => setState(() => _plan = value ?? _plan),
         ),
