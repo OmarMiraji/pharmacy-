@@ -180,6 +180,11 @@ abstract final class AppPermissions {
       }
       defaults[key] = value == true;
     });
+    const stockViews = {dashboardView, medicinesView, inventoryView};
+    final roleViews = roleDefaults[role] ?? const <String, bool>{};
+    for (final key in stockViews) {
+      if (roleViews[key] == true) defaults[key] = true;
+    }
     if (role == 'admin') {
       for (final permission in pharmacyPermissions) {
         defaults[permission] = true;

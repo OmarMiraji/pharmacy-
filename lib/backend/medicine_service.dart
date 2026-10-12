@@ -894,7 +894,6 @@ class MedicineService {
     await _firestore.runTransaction((transaction) async {
       transaction.update(medicineRef, {
         'quantityOnHand': quantity,
-        if (expiry != null) 'expiryDate': Timestamp.fromDate(expiry),
         'updatedAt': now,
       });
 
@@ -928,7 +927,6 @@ class MedicineService {
         usedBatchNumber = (doc.data()['batchNumber'] as String?) ?? '';
         transaction.update(doc.reference, {
           'quantityOnHand': quantity,
-          if (expiry != null) 'expiryDate': Timestamp.fromDate(expiry),
           'isActive': quantity > 0,
           'updatedAt': now,
         });
@@ -942,7 +940,6 @@ class MedicineService {
           if (leftover > 0) {
             transaction.update(doc.reference, {
               'quantityOnHand': qty + leftover,
-              if (expiry != null) 'expiryDate': Timestamp.fromDate(expiry),
               'updatedAt': now,
             });
             leftover = 0;

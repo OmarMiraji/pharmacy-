@@ -439,7 +439,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _DashboardDestination(id: 'overview', label: S.t('Overview', 'Muhtasari'), icon: Icons.grid_view_rounded),
         if (widget.profile.can('medicines.view') || widget.profile.can('inventory.view'))
           _DashboardDestination(id: 'medicines', label: S.t('Medicines', 'Dawa'), icon: Icons.medication_outlined),
-        if (widget.profile.can('sales.view') || widget.profile.can(AppPermissions.salesRecords))
+        if (widget.profile.can('sales.view') || widget.profile.can('sales.create') || widget.profile.can(AppPermissions.salesRecords))
           _DashboardDestination(id: 'sales', label: S.t('Sales', 'Mauzo'), icon: Icons.point_of_sale_outlined),
         if (widget.profile.can('purchases.view') || widget.profile.can('suppliers.manage'))
           _DashboardDestination(id: 'purchases', label: S.t('Purchases', 'Manunuzi'), icon: Icons.shopping_cart_outlined),
@@ -1017,13 +1017,20 @@ class _OverviewScreenState extends State<OverviewScreen> {
       );
     }
     try {
-      final medicinesSnapshot = await tenant.scoped(firestore.collection(FirestoreCollections.medicines)).get(options);
-      final batchesSnapshot = await tenant.scoped(firestore.collection(FirestoreCollections.medicineBatches)).get(options);
-      final salesDocs = widget.profile.canSeeSalesTotals
-          ? (await tenant.scoped(firestore.collection(FirestoreCollections.sales)).get(options)).docs
-          : const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+      Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> loadDocs(String collection) async {
+        try {
+          return (await tenant.scoped(firestore.collection(collection)).get(options)).docs;
+        } on FirebaseException catch (error) {
+          if (error.code == 'permission-denied') return const [];
+          rethrow;
+        }
+      }
 
-    final medicines = medicinesSnapshot.docs;
+      final medicines = await loadDocs(FirestoreCollections.medicines);
+      final batchDocs = await loadDocs(FirestoreCollections.medicineBatches);
+      final salesDocs = widget.profile.canSeeSalesTotals
+          ? await loadDocs(FirestoreCollections.sales)
+          : const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
     final lowStockCount = medicines.where((doc) {
       final data = doc.data();
       final stock = (data['quantityOnHand'] as num?)?.toInt() ?? 0;
@@ -1047,8 +1054,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
     }).toList();
 
     final todaySalesMinor = todaySales.fold<int>(0, (total, doc) => total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0));
-    final medicineModels = medicinesSnapshot.docs.map(Medicine.fromFirestore).toList();
-    final batchModels = batchesSnapshot.docs.map(MedicineBatch.fromFirestore).toList();
+    final medicineModels = medicines.map(Medicine.fromFirestore).toList();
+    final batchModels = batchDocs.map(MedicineBatch.fromFirestore).toList();
     final expiredLines = ExpiryStock.expiredLines(medicineModels, batchModels);
     final expirySoonCount = batchModels.where((batch) {
       if (batch.quantityOnHand <= 0 && medicineModels.every((medicine) => medicine.id != batch.medicineId || medicine.quantityOnHand <= 0)) {
@@ -1747,7 +1754,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   bool _onSaleEnter(KeyEvent event) {
-    if (_salesPanel != 0 || !widget.profile.can('sales.view')) return false;
+    if (_salesPanel != 0 || !widget.profile.can('sales.create')) return false;
     if (event is! KeyDownEvent) return false;
     final key = event.logicalKey;
     if (key != LogicalKeyboardKey.enter && key != LogicalKeyboardKey.numpadEnter) return false;
@@ -1837,7 +1844,7 @@ class _SalesScreenState extends State<SalesScreen> {
   @override
   Widget build(BuildContext context) {
     final records = _canSeeSaleRecords;
-    final sell = widget.profile.can('sales.view');
+    final sell = widget.profile.can('sales.view') || widget.profile.can('sales.create');
     if (records && !sell) return _saleRecordsPage();
     if (!records) return _buildCounter();
     return Column(
@@ -5845,13 +5852,19 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                           if (!context.mounted) return;
                           final text = '$error';
                           final denied = text.contains('permission-denied');
+                          final canEdit = widget.profile.role == 'admin' || widget.profile.isSuperAdmin || widget.profile.can(AppPermissions.medicinesUpdate);
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                             content: Text(
                               denied
-                                  ? S.t(
-                                      'This cashier login cannot edit medicines. Sell from Sales, or ask an admin / pharmacist to save catalogue changes.',
-                                      'Akaunti hii haiwezi kuhariri dawa. Uza kwenye Sales, au muombe admin/pharmacist ahifadhi mabadiliko ya katalogi.',
-                                    )
+                                  ? canEdit
+                                      ? S.t(
+                                          'Save was blocked by the server. Sign out, sign in again, and retry. If it still fails, renew the shop license.',
+                                          'Uhifadhi umekataliwa na seva. Toka, ingia tena, kisha jaribu. Ikiendelea, lipia leseni ya duka.',
+                                        )
+                                      : S.t(
+                                          'This login cannot edit medicines. Sell from Sales, or ask an admin to save catalogue changes.',
+                                          'Akaunti hii haiwezi kuhariri dawa. Uza kwenye Sales, au muombe admin ahifadhi mabadiliko ya katalogi.',
+                                        )
                                   : text,
                             ),
                           ));

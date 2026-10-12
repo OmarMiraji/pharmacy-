@@ -324,9 +324,28 @@ class SalesService {
             .where('medicineId', isEqualTo: id)
             .get(),
     ]);
+    final legacyBatches = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    for (final id in medicineIds) {
+      try {
+        final legacy = await _firestore
+            .collection(FirestoreCollections.medicineBatches)
+            .where('medicineId', isEqualTo: id)
+            .where('pharmacyId', isNull: true)
+            .get();
+        legacyBatches[id] = legacy.docs;
+      } on FirebaseException catch (error) {
+        if (error.code != 'permission-denied') rethrow;
+        legacyBatches[id] = const [];
+      }
+    }
     final batchRefsByMedicine = <String, List<DocumentReference<Map<String, dynamic>>>>{};
     for (var i = 0; i < medicineIds.length; i++) {
-      batchRefsByMedicine[medicineIds[i]] = [for (final doc in batchQueries[i].docs) doc.reference];
+      final seen = <String>{};
+      final refs = <DocumentReference<Map<String, dynamic>>>[];
+      for (final doc in [...batchQueries[i].docs, ...legacyBatches[medicineIds[i]] ?? const []]) {
+        if (seen.add(doc.id)) refs.add(doc.reference);
+      }
+      batchRefsByMedicine[medicineIds[i]] = refs;
     }
 
     var allocations = <_BatchTake>[];
@@ -431,10 +450,12 @@ class SalesService {
         if (current < allocation.quantity) {
           throw StateError('Stock changed. Please review the cart and try again.');
         }
+        final batchShop = (allocation.snapshot.data()?['pharmacyId'] as String?)?.trim() ?? '';
         transaction.update(allocation.snapshot.reference, {
           'quantityOnHand': current - allocation.quantity,
           'updatedAt': serverNow,
           'isActive': current - allocation.quantity > 0,
+          if (batchShop.isEmpty) 'pharmacyId': TenantContext.instance.requirePharmacyId(),
         });
       }
     });
