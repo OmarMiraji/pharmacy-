@@ -85,27 +85,25 @@ class DailyInventoryTrack {
 
 class InventoryTrackingService {
   InventoryTrackingService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
 
   Stream<DailyInventoryTrack> watchDay({
     required DateTime day,
-    required List<Medicine> medicines,
+    required List<Medicine> Function() medicines,
   }) {
     final start = StockLedger.startOfDay(day);
     final end = StockLedger.endOfDay(day);
     return TenantContext.instance
         .scoped(_firestore.collection(FirestoreCollections.stockMovements))
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end))
         .snapshots()
         .asyncMap((snapshot) async {
-      final docs = snapshot.docs.where((doc) {
-        final createdAt = _readDate(doc.data()['createdAt']);
-        return createdAt != null && !createdAt.isBefore(start) && !createdAt.isAfter(end);
-      }).toList();
-      final saleUnits = await _saleUnitsByMedicine(start, end);
-      return _build(day, medicines, docs, saleUnits);
-    });
+          final saleUnits = await _saleUnitsByMedicine(start, end);
+          return _build(day, medicines(), snapshot.docs, saleUnits);
+        });
   }
 
   Future<DailyInventoryTrack> loadDay({
@@ -124,17 +122,21 @@ class InventoryTrackingService {
     DateTime end,
   ) async {
     try {
-      final snapshot = await TenantContext.instance.scoped(_firestore.collection(FirestoreCollections.stockMovements)).get();
-      return snapshot.docs.where((doc) {
-        final createdAt = _readDate(doc.data()['createdAt']);
-        return createdAt != null && !createdAt.isBefore(start) && !createdAt.isAfter(end);
-      }).toList();
+      final snapshot = await TenantContext.instance
+          .scoped(_firestore.collection(FirestoreCollections.stockMovements))
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end))
+          .get();
+      return snapshot.docs;
     } catch (_) {
       return const [];
     }
   }
 
-  Future<Map<String, int>> _saleUnitsByMedicine(DateTime start, DateTime end) async {
+  Future<Map<String, int>> _saleUnitsByMedicine(
+    DateTime start,
+    DateTime end,
+  ) async {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> salesDocs;
     try {
       final snapshot = await TenantContext.instance
@@ -142,21 +144,27 @@ class InventoryTrackingService {
           .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
           .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end))
           .get();
-      salesDocs = snapshot.docs.where((doc) => (doc.data()['status'] as String? ?? 'completed') != 'voided').toList();
-    } catch (_) {
-      final snapshot = await TenantContext.instance.scoped(_firestore.collection(FirestoreCollections.sales)).get();
       salesDocs = snapshot.docs.where((doc) {
-        final createdAt = _readDate(doc.data()['createdAt']);
         final status = doc.data()['status'] as String? ?? 'completed';
-        return status != 'voided' && createdAt != null && !createdAt.isBefore(start) && !createdAt.isAfter(end);
+        return status != 'voided' && status != 'refunded';
       }).toList();
+    } catch (_) {
+      return const {};
     }
 
     final totals = <String, int>{};
     const chunkSize = 15;
     for (var i = 0; i < salesDocs.length; i += chunkSize) {
-      final chunk = salesDocs.sublist(i, i + chunkSize > salesDocs.length ? salesDocs.length : i + chunkSize);
-      final itemSnaps = await Future.wait(chunk.map((doc) => doc.reference.collection(FirestoreCollections.saleItems).get()));
+      final chunk = salesDocs.sublist(
+        i,
+        i + chunkSize > salesDocs.length ? salesDocs.length : i + chunkSize,
+      );
+      final itemSnaps = await Future.wait(
+        chunk.map(
+          (doc) =>
+              doc.reference.collection(FirestoreCollections.saleItems).get(),
+        ),
+      );
       for (final items in itemSnaps) {
         for (final item in items.docs) {
           final medicineId = (item.data()['medicineId'] as String?) ?? '';
@@ -175,7 +183,9 @@ class InventoryTrackingService {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
     Map<String, int> saleUnits,
   ) {
-    final names = {for (final medicine in medicines) medicine.id: medicine.name};
+    final names = {
+      for (final medicine in medicines) medicine.id: medicine.name,
+    };
     final inBy = <String, int>{};
     final outBy = <String, int>{};
     final saleBy = <String, int>{};
@@ -187,32 +197,45 @@ class InventoryTrackingService {
       final change = (data['quantityChange'] as num?)?.toInt() ?? 0;
       final type = (data['type'] as String?) ?? '';
       final medicineId = (data['medicineId'] as String?) ?? '';
-      final direction = (data['direction'] as String?) ?? (change < 0 ? 'out' : 'in');
+      final direction =
+          (data['direction'] as String?) ?? (change < 0 ? 'out' : 'in');
       final units = (data['units'] as num?)?.toInt() ?? change.abs();
       final name = (data['medicineName'] as String?)?.trim();
-      if (type == 'sale' || (type.isEmpty && change < 0)) {
-        outBy[medicineId] = (outBy[medicineId] ?? 0) + units;
-        saleBy[medicineId] = (saleBy[medicineId] ?? 0) + units;
-      } else if (type == 'expiry') {
-        outBy[medicineId] = (outBy[medicineId] ?? 0) + units;
-        expiryBy[medicineId] = (expiryBy[medicineId] ?? 0) + units;
-      } else if (type == 'sale_void') {
-        outBy[medicineId] = ((outBy[medicineId] ?? 0) - units).clamp(0, 1 << 30);
-        saleBy[medicineId] = ((saleBy[medicineId] ?? 0) - units).clamp(0, 1 << 30);
-      } else if (type == 'adjustment') {
-        if (change < 0 || direction == 'out') {
+      if (type != 'purchase_correction') {
+        if (type == 'sale' || (type.isEmpty && change < 0)) {
           outBy[medicineId] = (outBy[medicineId] ?? 0) + units;
+          saleBy[medicineId] = (saleBy[medicineId] ?? 0) + units;
+        } else if (type == 'expiry') {
+          outBy[medicineId] = (outBy[medicineId] ?? 0) + units;
+          expiryBy[medicineId] = (expiryBy[medicineId] ?? 0) + units;
+        } else if (type == 'sale_void') {
+          outBy[medicineId] = ((outBy[medicineId] ?? 0) - units).clamp(
+            0,
+            1 << 30,
+          );
+          saleBy[medicineId] = ((saleBy[medicineId] ?? 0) - units).clamp(
+            0,
+            1 << 30,
+          );
+        } else if (type == 'adjustment') {
+          if (change < 0 || direction == 'out') {
+            outBy[medicineId] = (outBy[medicineId] ?? 0) + units;
+          } else {
+            inBy[medicineId] = (inBy[medicineId] ?? 0) + units;
+          }
         } else {
-          inBy[medicineId] = (inBy[medicineId] ?? 0) + units;
+          inBy[medicineId] =
+              (inBy[medicineId] ?? 0) +
+              (change.abs() > 0 ? change.abs() : units);
         }
-      } else {
-        inBy[medicineId] = (inBy[medicineId] ?? 0) + (change.abs() > 0 ? change.abs() : units);
       }
       movements.add(
         StockMovementEntry(
           id: doc.id,
           medicineId: medicineId,
-          medicineName: (name != null && name.isNotEmpty) ? name : (names[medicineId] ?? 'Medicine'),
+          medicineName: (name != null && name.isNotEmpty)
+              ? name
+              : (names[medicineId] ?? 'Medicine'),
           type: type,
           direction: direction,
           quantityChange: change,
@@ -224,31 +247,50 @@ class InventoryTrackingService {
       );
     }
 
-    movements.sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+    movements.sort(
+      (a, b) =>
+          (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+    );
 
-    final rows = medicines.map((medicine) {
-      return MedicineDayTrack(
-        medicine: medicine,
-        unitsIn: inBy[medicine.id] ?? 0,
-        unitsOut: outBy[medicine.id] ?? 0,
-        saleLedgerUnits: saleBy[medicine.id] ?? 0,
-        expiryUnits: expiryBy[medicine.id] ?? 0,
-        saleReceiptUnits: saleUnits[medicine.id] ?? 0,
-      );
-    }).toList()
-      ..sort((a, b) {
-        final activity = (b.unitsOut + b.unitsIn).compareTo(a.unitsOut + a.unitsIn);
-        if (activity != 0) return activity;
-        return a.medicine.name.compareTo(b.medicine.name);
-      });
+    final rows =
+        medicines.map((medicine) {
+          return MedicineDayTrack(
+            medicine: medicine,
+            unitsIn: inBy[medicine.id] ?? 0,
+            unitsOut: outBy[medicine.id] ?? 0,
+            saleLedgerUnits: saleBy[medicine.id] ?? 0,
+            expiryUnits: expiryBy[medicine.id] ?? 0,
+            saleReceiptUnits: saleUnits[medicine.id] ?? 0,
+          );
+        }).toList()..sort((a, b) {
+          final activity = (b.unitsOut + b.unitsIn).compareTo(
+            a.unitsOut + a.unitsIn,
+          );
+          if (activity != 0) return activity;
+          return a.medicine.name.compareTo(b.medicine.name);
+        });
 
     final unitsIn = inBy.values.fold<int>(0, (total, value) => total + value);
     final unitsOut = outBy.values.fold<int>(0, (total, value) => total + value);
-    final saleLedgerUnits = saleBy.values.fold<int>(0, (total, value) => total + value);
-    final expiryUnits = expiryBy.values.fold<int>(0, (total, value) => total + value);
-    final receiptUnits = saleUnits.values.fold<int>(0, (total, value) => total + value);
-    final stockUnits = medicines.fold<int>(0, (total, medicine) => total + medicine.quantityOnHand);
-    final lowStock = medicines.where((medicine) => medicine.quantityOnHand <= medicine.reorderLevel).length;
+    final saleLedgerUnits = saleBy.values.fold<int>(
+      0,
+      (total, value) => total + value,
+    );
+    final expiryUnits = expiryBy.values.fold<int>(
+      0,
+      (total, value) => total + value,
+    );
+    final receiptUnits = saleUnits.values.fold<int>(
+      0,
+      (total, value) => total + value,
+    );
+    final stockUnits = medicines.fold<int>(
+      0,
+      (total, medicine) => total + medicine.quantityOnHand,
+    );
+    final lowStock = medicines
+        .where((medicine) => medicine.quantityOnHand <= medicine.reorderLevel)
+        .length;
 
     return DailyInventoryTrack(
       day: day,

@@ -149,11 +149,17 @@ class ReportService {
     const chunkSize = 15;
     for (var i = 0; i < docs.length; i += chunkSize) {
       final chunk = docs.sublist(i, i + chunkSize > docs.length ? docs.length : i + chunkSize);
-      snapshots.addAll(
-        await Future.wait(
-          chunk.map((doc) => doc.reference.collection(subcollection).get()),
-        ),
+      final results = await Future.wait(
+        chunk.map((doc) async {
+          try {
+            return await doc.reference.collection(subcollection).get();
+          } on FirebaseException catch (error) {
+            if (error.code == 'permission-denied') return null;
+            rethrow;
+          }
+        }),
       );
+      snapshots.addAll(results.whereType<QuerySnapshot<Map<String, dynamic>>>());
     }
     return snapshots;
   }

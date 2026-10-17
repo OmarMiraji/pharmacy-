@@ -217,6 +217,7 @@ service cloud.firestore {
       return writeBase(u, s, id) && (
         isManager(u, s)
         || staffPerm(u, 'sales.create')
+        || (request.resource.data.type == 'sale_void' && staffPerm(u, 'sales.refund'))
         || staffPerm(u, 'inventory.adjust')
         || staffPerm(u, 'purchases.create')
         || staffPerm(u, 'purchases.receive')
@@ -265,6 +266,18 @@ service cloud.firestore {
       return data != null && 'pharmacyId' in data && data.pharmacyId is string ? data.pharmacyId : '';
     }
 
+    function saleParentReadable(saleId) {
+      let id = shopIdOf(
+        exists(/databases/$(database)/documents/sales/$(saleId))
+          ? get(/databases/$(database)/documents/sales/$(saleId)).data
+          : {}
+      );
+      let u = me();
+      let s = shopData(id);
+      return inShopWith(u, s, id)
+        && (hasPerm(u, s, 'sales.view') || hasPerm(u, s, 'sales.records') || hasPerm(u, s, 'sales.refund'));
+    }
+
     function writeShopId(data) {
       return shopIdOf(data).size() > 0 ? shopIdOf(data) : tenantId();
     }
@@ -304,6 +317,14 @@ service cloud.firestore {
         && data.totalMinor == data.subtotalMinor - data.discountMinor;
     }
 
+    function purchaseCorrectionValid(data) {
+      return nonNegNumber(data.quantityReceived)
+        && data.quantityReceived > 0
+        && nonNegNumber(data.subtotalMinor)
+        && nonNegNumber(data.totalMinor)
+        && data.totalMinor == data.subtotalMinor;
+    }
+
     function saleDiscountAllowed(data) {
       let u = me();
       return data.discountMinor == 0
@@ -320,7 +341,7 @@ service cloud.firestore {
       let s = shopData(id);
       return writeBase(u, s, id) && (
         isManager(u, s)
-        || (stockOnlyMedicineKeys() && (staffPerm(u, 'sales.create') || staffPerm(u, 'inventory.adjust')))
+        || (stockOnlyMedicineKeys() && (staffPerm(u, 'sales.create') || staffPerm(u, 'inventory.adjust') || staffPerm(u, 'sales.refund')))
         || (purchaseReceiveMedicineKeys() && staffPerm(u, 'purchases.receive'))
         || staffPerm(u, 'medicines.update')
       );
@@ -331,7 +352,7 @@ service cloud.firestore {
       let s = shopData(id);
       return writeBase(u, s, id) && (
         isManager(u, s)
-        || (batchStockKeys() && (staffPerm(u, 'sales.create') || staffPerm(u, 'purchases.receive')))
+        || (batchStockKeys() && (staffPerm(u, 'sales.create') || staffPerm(u, 'purchases.receive') || staffPerm(u, 'sales.refund')))
         || staffPerm(u, 'medicines.update')
         || staffPerm(u, 'inventory.adjust')
       );
@@ -446,6 +467,9 @@ service cloud.firestore {
       allow read: if canReadTenant(resource.data.pharmacyId, 'purchases.view');
       allow create: if canWriteEither(request.resource.data.pharmacyId, 'purchases.create', 'purchases.receive');
       allow update: if request.resource.data.pharmacyId == resource.data.pharmacyId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['quantityReceived', 'subtotalMinor', 'totalMinor', 'updatedAt'])
+        && purchaseCorrectionValid(request.resource.data)
         && canWriteEither(resource.data.pharmacyId, 'purchases.create', 'purchases.receive');
       allow delete: if isSuperAdmin();
 
@@ -456,7 +480,19 @@ service cloud.firestore {
             && canReadTenant(shopIdOf(get(/databases/$(database)/documents/purchases/$(purchaseId)).data), 'purchases.view')
           );
         allow create: if canWriteEither(request.resource.data.pharmacyId, 'purchases.create', 'purchases.receive');
-        allow update, delete: if isSuperAdmin();
+        allow update: if request.resource.data.pharmacyId == resource.data.pharmacyId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['quantity', 'totalMinor', 'updatedAt'])
+          && nonNegNumber(request.resource.data.quantity)
+          && request.resource.data.quantity > 0
+          && nonNegNumber(request.resource.data.totalMinor)
+          && exists(/databases/$(database)/documents/purchases/$(purchaseId))
+          && canWriteEither(
+            shopIdOf(get(/databases/$(database)/documents/purchases/$(purchaseId)).data),
+            'purchases.create',
+            'purchases.receive'
+          );
+        allow delete: if isSuperAdmin();
       }
     }
 
@@ -474,7 +510,8 @@ service cloud.firestore {
 
       match /items/{itemId} {
         allow read: if canReadTenant(shopIdOf(resource.data), 'sales.view')
-          || canReadTenant(shopIdOf(resource.data), 'sales.records');
+          || canReadTenant(shopIdOf(resource.data), 'sales.records')
+          || saleParentReadable(saleId);
         allow create: if canWriteTenant(request.resource.data.pharmacyId, 'sales.create')
           && nonNegNumber(request.resource.data.quantity)
           && request.resource.data.quantity > 0
@@ -486,9 +523,24 @@ service cloud.firestore {
 
     match /stock_movements/{movementId} {
       allow read: if canReadTenant(resource.data.pharmacyId, 'inventory.view')
-        || canReadTenant(resource.data.pharmacyId, 'sales.view');
+        || canReadTenant(resource.data.pharmacyId, 'sales.view')
+        || canReadTenant(resource.data.pharmacyId, 'sales.refund')
+        || canReadTenant(resource.data.pharmacyId, 'purchases.view')
+        || canReadTenant(resource.data.pharmacyId, 'purchases.receive');
       allow create: if canWriteStockLedger(request.resource.data.pharmacyId);
-      allow update, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() || (
+        resource.data.type == 'purchase'
+        && request.resource.data.type == 'purchase'
+        && request.resource.data.pharmacyId == resource.data.pharmacyId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['quantityChange', 'units', 'direction', 'updatedAt'])
+        && nonNegNumber(request.resource.data.quantityChange)
+        && request.resource.data.quantityChange > 0
+        && request.resource.data.units == request.resource.data.quantityChange
+        && request.resource.data.direction == 'in'
+        && canWriteEither(resource.data.pharmacyId, 'purchases.create', 'purchases.receive')
+      );
+      allow delete: if isSuperAdmin();
     }
 
     match /expenses/{expenseId} {
