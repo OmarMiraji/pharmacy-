@@ -100,7 +100,7 @@ class MedicineService {
     _medicineSub = _tenant
         .scoped(_medicines)
         .where('isActive', isEqualTo: true)
-        .snapshots(includeMetadataChanges: true)
+        .snapshots()
         .listen((snapshot) {
       if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
       final latest = snapshot.docs.map(Medicine.fromFirestore).toList()
@@ -119,7 +119,7 @@ class MedicineService {
     _offlineListener = emitMedicines;
     OfflineSyncService.instance.addListener(_offlineListener!);
 
-    _batchSub = _tenant.scoped(_batches).snapshots(includeMetadataChanges: true).listen((snapshot) {
+    _batchSub = _tenant.scoped(_batches).snapshots().listen((snapshot) {
       if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
       final batches = snapshot.docs.map(MedicineBatch.fromFirestore).toList()
         ..sort((a, b) => a.expiryDate.compareTo(b.expiryDate));
@@ -137,7 +137,7 @@ class MedicineService {
     _categorySub = _tenant
         .scoped(_categories)
         .where('isActive', isEqualTo: true)
-        .snapshots(includeMetadataChanges: true)
+        .snapshots()
         .listen((snapshot) {
       if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
       final categories = snapshot.docs

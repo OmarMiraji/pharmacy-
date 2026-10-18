@@ -16,6 +16,7 @@ import '../backend/pharmacy_service.dart';
 import '../backend/receipt_service.dart';
 import '../backend/report_export_service.dart';
 import '../backend/report_service.dart';
+import '../backend/sales_service.dart';
 import '../backend/shop_alerts.dart';
 import '../backend/subscription_service.dart';
 import '../backend/tenant_context.dart';
@@ -86,18 +87,23 @@ class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
     }
     final firestore = FirebaseFirestore.instance;
     final tenant = TenantContext.instance;
-    _salesSub = tenant.scoped(firestore.collection(FirestoreCollections.sales)).snapshots().listen(
-      (snapshot) {
+    final salesSince = SalesService.dashboardSalesSince();
+    _salesSub = SalesService().watchSaleDocsSince(salesSince).listen(
+      (docs) {
         if (!mounted) return;
         setState(() {
-          _sales = snapshot.docs;
+          _sales = docs;
           _shopError = null;
           _markReady();
         });
       },
       onError: _fail,
     );
-    _medicineSub = tenant.scoped(firestore.collection(FirestoreCollections.medicines)).snapshots().listen(
+    _medicineSub = tenant
+        .scoped(firestore.collection(FirestoreCollections.medicines))
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen(
       (snapshot) {
         if (!mounted) return;
         setState(() {

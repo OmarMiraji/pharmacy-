@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -1278,9 +1278,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
         )
         .then((data) {
           _lastOverview = data;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) unawaited(_refresh());
-          });
           return data;
         });
   }
@@ -1312,6 +1309,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
       );
     }
     try {
+      final now = DateTime.now();
       Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> loadDocs(
         String collection,
       ) async {
@@ -1326,14 +1324,22 @@ class _OverviewScreenState extends State<OverviewScreen> {
         }
       }
 
+      Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+          loadRecentSalesDocs() async {
+        if (!widget.profile.canSeeSalesTotals) return const [];
+        final since = SalesService.dashboardSalesSince(now);
+        try {
+          return await SalesService().fetchSaleDocsSince(since, options: options);
+        } on FirebaseException catch (error) {
+          if (error.code == 'permission-denied') return const [];
+          rethrow;
+        }
+      }
+
       final loaded = await Future.wait([
         loadDocs(FirestoreCollections.medicines),
         loadDocs(FirestoreCollections.medicineBatches),
-        widget.profile.canSeeSalesTotals
-            ? loadDocs(FirestoreCollections.sales)
-            : Future.value(
-                const <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-              ),
+        loadRecentSalesDocs(),
       ]);
       final medicines = loaded[0];
       final batchDocs = loaded[1];
@@ -1345,7 +1351,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
         return stock <= reorder;
       }).length;
 
-      final now = DateTime.now();
       final todayStart = DateTime(now.year, now.month, now.day);
       final todayEnd = todayStart.add(const Duration(days: 1));
 

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../backend/expiry_stock.dart';
 import '../backend/firestore_collections.dart';
 import '../backend/models.dart';
+import '../backend/sales_service.dart';
 import '../backend/shop_alerts.dart';
 import '../backend/tenant_context.dart';
 
@@ -103,7 +104,9 @@ class MobileShopData {
       final medicineDocs = await loadDocs(FirestoreCollections.medicines);
       final batchDocs = await loadDocs(FirestoreCollections.medicineBatches);
       final salesDocs = includeMoney
-          ? await loadDocs(FirestoreCollections.sales)
+          ? await SalesService().fetchSaleDocsSince(
+              SalesService.dashboardSalesSince(),
+            )
           : const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
       final medicines = medicineDocs.map(Medicine.fromFirestore).where((item) => item.isActive).toList();

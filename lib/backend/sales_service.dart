@@ -164,6 +164,16 @@ class SalesService {
   final FirebaseFirestore _firestore;
 
   static const staffDiscountCapPercent = 20;
+  static const dashboardSalesDays = 7;
+
+  static DateTime startOfDay(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  /// Dashboard and mobile home only need recent sales, not full history.
+  static DateTime dashboardSalesSince([DateTime? now]) {
+    return startOfDay(now ?? DateTime.now())
+        .subtract(Duration(days: dashboardSalesDays - 1));
+  }
 
   static void assertSaleDiscount({
     required int discountMinor,
@@ -183,24 +193,44 @@ class SalesService {
     }
   }
 
-  Stream<List<SaleRecord>> watchSales() {
-    return TenantContext.instance
-        .scoped(_firestore.collection(FirestoreCollections.sales))
+  Query<Map<String, dynamic>> _scopedSales() {
+    return TenantContext.instance.scoped(
+      _firestore.collection(FirestoreCollections.sales),
+    );
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> fetchSaleDocsSince(
+    DateTime start, {
+    GetOptions? options,
+  }) async {
+    final snapshot = await _scopedSales()
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .get(options ?? const GetOptions());
+    return snapshot.docs;
+  }
+
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      watchSaleDocsSince(DateTime start) {
+    return _scopedSales()
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .snapshots()
-        .map((snapshot) {
-          final rows = snapshot.docs.map(SaleRecord.fromDoc).toList();
-          rows.sort(
-            (a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
-                .compareTo(
-                  a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
-                ),
-          );
-          return rows;
-        });
+        .map((snapshot) => snapshot.docs);
+  }
+
+  /// Full sale history. Prefer [watchSalesForDay] or [watchSaleDocsSince].
+  Stream<List<SaleRecord>> watchSales() {
+    return watchSaleDocsSince(dashboardSalesSince()).map((docs) {
+      final rows = docs.map(SaleRecord.fromDoc).toList();
+      rows.sort(
+        (a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
+      );
+      return rows;
+    });
   }
 
   Stream<List<SaleRecord>> watchSalesForDay(DateTime day) {
-    final start = DateTime(day.year, day.month, day.day);
+    final start = startOfDay(day);
     final end = start.add(const Duration(days: 1));
     return TenantContext.instance
         .scoped(_firestore.collection(FirestoreCollections.sales))

@@ -92,17 +92,18 @@ class ReportService {
   }
 
   Future<ReportSummary> loadSummary() async {
+    final range = buildDateRange();
     final results = await Future.wait([
-      TenantContext.instance.scoped(_firestore.collection(FirestoreCollections.sales)).get(),
-      TenantContext.instance.scoped(_firestore.collection(FirestoreCollections.purchases)).get(),
+      _docsInRange(collection: FirestoreCollections.sales, range: range),
+      _docsInRange(collection: FirestoreCollections.purchases, range: range),
       TenantContext.instance.scoped(_firestore.collection(FirestoreCollections.medicines)).where('isActive', isEqualTo: true).get(),
     ]);
-    final sales = results[0];
-    final purchases = results[1];
-    final medicines = results[2];
-    final liveSales = sales.docs.where((doc) => _countsAsSale(doc.data()['status'])).toList();
+    final salesDocs = results[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+    final purchaseDocs = results[1] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+    final medicines = results[2] as QuerySnapshot<Map<String, dynamic>>;
+    final liveSales = salesDocs.where((doc) => _countsAsSale(doc.data()['status'])).toList();
     final salesTotal = liveSales.fold<int>(0, (total, doc) => total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0));
-    final purchasesTotal = purchases.docs.fold<int>(0, (total, doc) => total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0));
+    final purchasesTotal = purchaseDocs.fold<int>(0, (total, doc) => total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0));
     final lowStock = medicines.docs.where((doc) {
       final data = doc.data();
       final stock = (data['quantityOnHand'] as num?)?.toInt() ?? 0;
@@ -113,7 +114,7 @@ class ReportService {
     return ReportSummary(
       salesCount: liveSales.length,
       salesTotalMinor: salesTotal,
-      purchasesCount: purchases.size,
+      purchasesCount: purchaseDocs.length,
       purchasesTotalMinor: purchasesTotal,
       medicineCount: medicines.size,
       lowStockCount: lowStock,
