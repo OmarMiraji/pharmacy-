@@ -51,7 +51,8 @@ class MobileShell extends StatefulWidget {
 class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
   int _index = 0;
   final List<GlobalKey> _sectionKeys = List<GlobalKey>.generate(7, (_) => GlobalKey());
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _salesSub;
+  StreamSubscription<List<QueryDocumentSnapshot<Map<String, dynamic>>>>?
+      _salesSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _medicineSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _batchSub;
   List<QueryDocumentSnapshot<Map<String, dynamic>>>? _sales;
@@ -87,7 +88,7 @@ class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
     }
     final firestore = FirebaseFirestore.instance;
     final tenant = TenantContext.instance;
-    final salesSince = SalesService.dashboardSalesSince();
+    final salesSince = SalesService.mobileShopSalesSince();
     _salesSub = SalesService().watchSaleDocsSince(salesSince).listen(
       (docs) {
         if (!mounted) return;

@@ -175,6 +175,14 @@ class SalesService {
         .subtract(Duration(days: dashboardSalesDays - 1));
   }
 
+  /// Mobile shop sales tab filters by week or calendar month; load the wider window.
+  static DateTime mobileShopSalesSince([DateTime? now]) {
+    final today = startOfDay(now ?? DateTime.now());
+    final monthStart = DateTime(today.year, today.month, 1);
+    final weekStart = today.subtract(const Duration(days: dashboardSalesDays - 1));
+    return monthStart.isBefore(weekStart) ? monthStart : weekStart;
+  }
+
   static void assertSaleDiscount({
     required int discountMinor,
     required int subtotalMinor,
