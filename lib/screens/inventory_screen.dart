@@ -55,7 +55,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   @override
   void initState() {
     super.initState();
-    MedicineService().consolidateDuplicateMedicinesOnce();
+    MedicineService().warmStockListeners();
   }
 
   bool get _isToday {

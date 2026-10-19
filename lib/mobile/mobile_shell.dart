@@ -115,7 +115,11 @@ class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
       },
       onError: _fail,
     );
-    _batchSub = tenant.scoped(firestore.collection(FirestoreCollections.medicineBatches)).snapshots().listen(
+    _batchSub = tenant
+        .scoped(firestore.collection(FirestoreCollections.medicineBatches))
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen(
       (snapshot) {
         if (!mounted) return;
         setState(() {

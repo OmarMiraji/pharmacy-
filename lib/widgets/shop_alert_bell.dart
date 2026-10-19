@@ -51,6 +51,19 @@ class _ShopAlertBellState extends State<ShopAlertBell> {
 
   @override
   Widget build(BuildContext context) {
+    if (!MedicineService.stockListenersActive) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 10),
+        child: IconButton(
+          tooltip: S.t(
+            'Stock alerts load when you open Sales or Medicines',
+            'Arifa za stock zinaonekana ukifungua Mauzo au Dawa',
+          ),
+          onPressed: () {},
+          icon: const Icon(Icons.notifications_none_rounded),
+        ),
+      );
+    }
     final service = MedicineService();
     return StreamBuilder<List<Medicine>>(
       stream: service.watchMedicines(),

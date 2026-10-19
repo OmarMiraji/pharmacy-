@@ -59,6 +59,15 @@ class MedicineService {
 
   TenantContext get _tenant => TenantContext.instance;
 
+  /// True when live medicine/batch listeners are running for the current shop.
+  static bool get stockListenersActive {
+    final shop = TenantContext.instance.pharmacyId ?? '';
+    return shop.isNotEmpty && _sharedShop == shop && _medicineSub != null;
+  }
+
+  /// Attach stock listeners (POS, medicines). Avoid calling from global chrome.
+  void warmStockListeners() => _ensureSharedShop();
+
   static void dropSharedListeners() {
     _medicineSub?.cancel();
     _batchSub?.cancel();
@@ -119,7 +128,11 @@ class MedicineService {
     _offlineListener = emitMedicines;
     OfflineSyncService.instance.addListener(_offlineListener!);
 
-    _batchSub = _tenant.scoped(_batches).snapshots().listen((snapshot) {
+    _batchSub = _tenant
+        .scoped(_batches)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen((snapshot) {
       if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
       final batches = snapshot.docs.map(MedicineBatch.fromFirestore).toList()
         ..sort((a, b) => a.expiryDate.compareTo(b.expiryDate));

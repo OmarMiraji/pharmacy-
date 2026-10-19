@@ -2453,6 +2453,7 @@ class _SalesScreenState extends State<SalesScreen> {
   @override
   void initState() {
     super.initState();
+    MedicineService().warmStockListeners();
     HardwareKeyboard.instance.addHandler(_onSaleEnter);
   }
 
@@ -7093,7 +7094,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
   @override
   void initState() {
     super.initState();
-    MedicineService().consolidateDuplicateMedicinesOnce();
+    MedicineService().warmStockListeners();
   }
 
   @override
