@@ -635,6 +635,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 !sync.isSyncing) {
                               return const SizedBox.shrink();
                             }
+                            final failedMedicines = sync.failedMedicinePendingCount;
                             final title = !sync.isOnline
                                 ? S.t(
                                     'No internet — using saved shop data',
@@ -644,6 +645,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ? S.t(
                                     'Sending saved changes...',
                                     'Inatuma vilivyohifadhiwa...',
+                                  )
+                                : failedMedicines > 0 &&
+                                      failedMedicines == sync.pendingCount
+                                ? S.t(
+                                    '$failedMedicines medicine ${failedMedicines == 1 ? 'change' : 'changes'} could not send',
+                                    'Mabadiliko $failedMedicines ya dawa hayakutuma',
                                   )
                                 : S.t(
                                     '${sync.pendingCount} saved ${sync.pendingCount == 1 ? 'change' : 'changes'} waiting to send',
@@ -659,8 +666,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           '${sync.pendingCount} saved on this computer. They send when the internet returns.',
                                           '${sync.pendingCount} vimehifadhiwa kwenye kompyuta hii. Vitatumwa intaneti ikirudi.',
                                         ))
+                                : failedMedicines > 0
+                                ? S.t(
+                                    'Sales still work. These medicine saves need admin permission or must be entered again. ${sync.lastError ?? ''}',
+                                    'Mauzo bado yanafanya kazi. Dawa hizi zinahitaji ruhusa ya admin au uingize tena. ${sync.lastError ?? ''}',
+                                  )
                                 : (sync.lastError ??
                                       'Tap Send now if they stay here after the connection is back.');
+                            final canDiscardFailed = widget.profile.role == 'admin' ||
+                                widget.profile.can(AppPermissions.medicinesCreate);
                             return Material(
                               color: sync.isOnline
                                   ? const Color(0xffe8f6f2)
@@ -706,11 +720,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                     if (sync.isOnline &&
                                         sync.pendingCount > 0 &&
-                                        !sync.isSyncing)
+                                        !sync.isSyncing &&
+                                        sync.retryableMedicinePendingCount > 0)
                                       TextButton(
                                         onPressed: () =>
                                             unawaited(sync.syncPending()),
                                         child: const Text('Send now'),
+                                      ),
+                                    if (sync.isOnline &&
+                                        failedMedicines > 0 &&
+                                        canDiscardFailed &&
+                                        !sync.isSyncing)
+                                      TextButton(
+                                        onPressed: () async {
+                                          final removed =
+                                              await sync.discardFailedMedicinePending();
+                                          if (!context.mounted) return;
+                                          showAppNotice(
+                                            context,
+                                            removed > 0
+                                                ? S.t(
+                                                    'Removed $removed failed medicine ${removed == 1 ? 'save' : 'saves'} from this PC. Re-add them in Medicines if still needed.',
+                                                    'Imeondoa uhifadhi $removed wa dawa uliofeli kwenye PC hii. Ongeza tena kwenye Dawa ikiwa bado unahitaji.',
+                                                  )
+                                                : S.t(
+                                                    'Nothing to remove.',
+                                                    'Hakuna cha kuondoa.',
+                                                  ),
+                                          );
+                                        },
+                                        child: Text(
+                                          S.t('Clear failed', 'Ondoa zilizoshindwa'),
+                                        ),
                                       ),
                                   ],
                                 ),

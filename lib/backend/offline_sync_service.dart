@@ -245,7 +245,46 @@ class OfflineSyncService extends ChangeNotifier {
   bool get isOnline => _online;
   bool get isSyncing => _syncing;
   int get pendingCount => _queue.length + _medicineQueue.length;
+
+  int get failedMedicinePendingCount => _medicineQueue
+      .where((change) => isPermanentSyncErrorMessage(change.lastError))
+      .length;
+
+  int get retryableMedicinePendingCount =>
+      _medicineQueue.length - failedMedicinePendingCount;
+
   List<PendingSale> get pendingSales => List.unmodifiable(_queue);
+
+  static bool isPermanentSyncError(Object error) {
+    if (error is FirebaseException) {
+      return error.code == 'permission-denied' ||
+          error.code == 'unauthenticated';
+    }
+    return isPermanentSyncErrorMessage('$error');
+  }
+
+  static bool isPermanentSyncErrorMessage(String? message) {
+    if (message == null || message.trim().isEmpty) return false;
+    final lower = message.toLowerCase();
+    return lower.contains('permission-denied') ||
+        lower.contains('insufficient permissions') ||
+        lower.contains('missing or insufficient');
+  }
+
+  /// Stops retrying medicine saves that Firestore will never accept on this login.
+  Future<int> discardFailedMedicinePending() async {
+    final before = _medicineQueue.length;
+    _medicineQueue = [
+      for (final change in _medicineQueue)
+        if (!isPermanentSyncErrorMessage(change.lastError)) change,
+    ];
+    if (_medicineQueue.length != before) {
+      await _save();
+      notifyListeners();
+    }
+    return before - _medicineQueue.length;
+  }
+
   String? get lastError {
     for (final sale in _queue) {
       final error = sale.lastError;
@@ -639,6 +678,10 @@ class OfflineSyncService extends ChangeNotifier {
             medicineRemaining.add(change);
             continue;
           }
+          if (isPermanentSyncErrorMessage(change.lastError)) {
+            medicineRemaining.add(change);
+            continue;
+          }
           if (processed >= _syncChunkSize) {
             medicineRemaining.add(change);
             continue;
@@ -652,8 +695,15 @@ class OfflineSyncService extends ChangeNotifier {
               paused = true;
               continue;
             }
-            medicineRemaining.add(change.copyWithError(error.toString().replaceFirst('Bad state: ', '')));
+            medicineRemaining.add(
+              change.copyWithError(
+                error.toString().replaceFirst('Bad state: ', ''),
+              ),
+            );
             processed++;
+            if (isPermanentSyncError(error)) {
+              continue;
+            }
           }
         }
       }
