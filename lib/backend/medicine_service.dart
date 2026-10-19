@@ -190,6 +190,21 @@ class MedicineService {
     return _replay(_lastBatches, _batchEvents);
   }
 
+  /// Reuses live shop listeners when available (avoids extra collection .get() reads).
+  Future<List<Medicine>> currentMedicines() async {
+    _ensureSharedShop();
+    if (_lastMedicines != null) {
+      return OfflineSyncService.instance.applyLocalStock(_lastMedicines!);
+    }
+    return watchMedicines().first;
+  }
+
+  Future<List<MedicineBatch>> currentBatches() async {
+    _ensureSharedShop();
+    if (_lastBatches != null) return _lastBatches!;
+    return watchAllBatches().first;
+  }
+
   Future<void> createCategory(String name) async {
     _tenant.assertWritable();
     final trimmedName = name.trim();

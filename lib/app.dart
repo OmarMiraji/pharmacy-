@@ -1269,29 +1269,16 @@ class _OverviewScreenState extends State<OverviewScreen> {
   @override
   void initState() {
     super.initState();
-    _overviewFuture = _loadOverviewData(fromCache: true)
-        .timeout(const Duration(seconds: 3))
-        .catchError(
-          (_) =>
-              _loadOverviewData(fromServer: true)
-                  .timeout(const Duration(seconds: 15)),
-        )
-        .then((data) {
-          _lastOverview = data;
-          return data;
-        });
+    _overviewFuture = _loadOverviewData().then((data) {
+      _lastOverview = data;
+      return data;
+    });
   }
 
-  Future<_OverviewData> _loadOverviewData({
-    bool fromServer = false,
-    bool fromCache = false,
-  }) async {
-    final firestore = FirebaseFirestore.instance;
+  Future<_OverviewData> _loadOverviewData({bool refreshSalesFromServer = false}) async {
     final tenant = TenantContext.instance;
-    final options = fromServer
+    final salesOptions = refreshSalesFromServer
         ? const GetOptions(source: Source.server)
-        : fromCache
-        ? const GetOptions(source: Source.cache)
         : const GetOptions();
     if ((tenant.pharmacyId ?? '').trim().isEmpty) {
       return const _OverviewData(
@@ -1310,26 +1297,17 @@ class _OverviewScreenState extends State<OverviewScreen> {
     }
     try {
       final now = DateTime.now();
-      Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> loadDocs(
-        String collection,
-      ) async {
-        try {
-          return (await tenant
-                  .scoped(firestore.collection(collection))
-                  .get(options))
-              .docs;
-        } on FirebaseException catch (error) {
-          if (error.code == 'permission-denied') return const [];
-          rethrow;
-        }
-      }
+      final medicineService = MedicineService();
 
       Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
           loadRecentSalesDocs() async {
         if (!widget.profile.canSeeSalesTotals) return const [];
         final since = SalesService.dashboardSalesSince(now);
         try {
-          return await SalesService().fetchSaleDocsSince(since, options: options);
+          return await SalesService().fetchSaleDocsSince(
+            since,
+            options: salesOptions,
+          );
         } on FirebaseException catch (error) {
           if (error.code == 'permission-denied') return const [];
           rethrow;
@@ -1337,19 +1315,16 @@ class _OverviewScreenState extends State<OverviewScreen> {
       }
 
       final loaded = await Future.wait([
-        loadDocs(FirestoreCollections.medicines),
-        loadDocs(FirestoreCollections.medicineBatches),
+        medicineService.currentMedicines(),
+        medicineService.currentBatches(),
         loadRecentSalesDocs(),
       ]);
-      final medicines = loaded[0];
-      final batchDocs = loaded[1];
-      final salesDocs = loaded[2];
-      final lowStockCount = medicines.where((doc) {
-        final data = doc.data();
-        final stock = (data['quantityOnHand'] as num?)?.toInt() ?? 0;
-        final reorder = (data['reorderLevel'] as num?)?.toInt() ?? 0;
-        return stock <= reorder;
-      }).length;
+      final medicineModels = loaded[0] as List<Medicine>;
+      final batchModels = loaded[1] as List<MedicineBatch>;
+      final salesDocs = loaded[2] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+      final lowStockCount = medicineModels
+          .where((medicine) => medicine.quantityOnHand <= medicine.reorderLevel)
+          .length;
 
       final todayStart = DateTime(now.year, now.month, now.day);
       final todayEnd = todayStart.add(const Duration(days: 1));
@@ -1372,8 +1347,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
         (total, doc) =>
             total + ((doc.data()['totalMinor'] as num?)?.toInt() ?? 0),
       );
-      final medicineModels = medicines.map(Medicine.fromFirestore).toList();
-      final batchModels = batchDocs.map(MedicineBatch.fromFirestore).toList();
       final expiredLines = ExpiryStock.expiredLines(
         medicineModels,
         batchModels,
@@ -1468,15 +1441,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
         }),
       );
 
-      final healthyStockCount = medicines.length - lowStockCount;
-      final totalUnits = medicines.fold<int>(
+      final healthyStockCount = medicineModels.length - lowStockCount;
+      final totalUnits = medicineModels.fold<int>(
         0,
-        (total, doc) =>
-            total + ((doc.data()['quantityOnHand'] as num?)?.toInt() ?? 0),
+        (total, medicine) => total + medicine.quantityOnHand,
       );
 
       return _OverviewData(
-        stockItems: medicines.length,
+        stockItems: medicineModels.length,
         stockUnits: totalUnits,
         lowStockCount: lowStockCount,
         todaySalesCount: todaySales.length,
@@ -1509,7 +1481,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
   }
 
   Future<void> _refresh() async {
-    final next = _loadOverviewData(fromServer: true)
+    final next = _loadOverviewData(refreshSalesFromServer: true)
         .timeout(const Duration(seconds: 15));
     setState(() {
       _refreshing = true;

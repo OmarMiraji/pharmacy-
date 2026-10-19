@@ -5,7 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'assistant_config.dart';
 import 'firestore_collections.dart';
+import 'medicine_service.dart';
 import 'models.dart';
+import 'sales_service.dart';
 import 'pharmacy.dart';
 import 'subscription_service.dart';
 import 'tenant_context.dart';
@@ -79,35 +81,24 @@ class ChatAssistantService {
     var purchaseTotal = 0;
 
     try {
-      final results = await Future.wait([
-        tenant.scoped(_firestore.collection(FirestoreCollections.medicines)).get(),
-        tenant.scoped(_firestore.collection(FirestoreCollections.medicineBatches)).get(),
-        tenant.scoped(_firestore.collection(FirestoreCollections.sales)).get(),
-        tenant.scoped(_firestore.collection(FirestoreCollections.purchases)).get(),
-      ]);
-      medicines = results[0].docs
-          .map((doc) {
-            try {
-              return Medicine.fromFirestore(doc);
-            } catch (_) {
-              return null;
-            }
-          })
-          .whereType<Medicine>()
-          .toList();
-      batches = results[1].docs
-          .map((doc) {
-            try {
-              return MedicineBatch.fromFirestore(doc);
-            } catch (_) {
-              return null;
-            }
-          })
-          .whereType<MedicineBatch>()
-          .toList();
-
       final now = DateTime.now();
-      final sales = [...results[2].docs.where((doc) {
+      final monthStart = DateTime(now.year, now.month, 1);
+      final medicineService = MedicineService();
+      final salesSince = SalesService.dashboardSalesSince(now);
+
+      final stockAndSales = await Future.wait([
+        medicineService.currentMedicines(),
+        medicineService.currentBatches(),
+        SalesService().fetchSaleDocsSince(salesSince),
+        _purchasesSince(tenant, monthStart),
+      ]);
+      medicines = stockAndSales[0] as List<Medicine>;
+      batches = stockAndSales[1] as List<MedicineBatch>;
+      final salesDocs = stockAndSales[2] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+      final purchaseDocs =
+          stockAndSales[3] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+
+      final sales = [...salesDocs.where((doc) {
         final status = (doc.data()['status'] as String?) ?? 'completed';
         return status != 'voided' && status != 'refunded';
       })]..sort((a, b) {
@@ -135,7 +126,7 @@ class ChatAssistantService {
         );
       }).toList();
 
-      for (final doc in results[3].docs) {
+      for (final doc in purchaseDocs) {
         final data = doc.data();
         final total = (data['totalMinor'] as num?)?.toInt() ?? 0;
         purchaseTotal += total;
@@ -404,6 +395,22 @@ class ChatAssistantService {
       throw StateError('Empty assistant reply.');
     } finally {
       client.close(force: true);
+    }
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _purchasesSince(
+    TenantContext tenant,
+    DateTime start,
+  ) async {
+    try {
+      final snapshot = await tenant
+          .scoped(_firestore.collection(FirestoreCollections.purchases))
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .get();
+      return snapshot.docs;
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') return const [];
+      rethrow;
     }
   }
 
