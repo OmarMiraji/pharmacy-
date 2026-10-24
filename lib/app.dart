@@ -43,6 +43,7 @@ import 'backend/shop_alerts.dart';
 import 'l10n/app_locale.dart';
 import 'theme/brand.dart';
 import 'widgets/app_notice.dart';
+import 'widgets/increase_stock_dialog.dart';
 import 'screens/subscription_admin_screen.dart';
 import 'screens/receive_purchase_dialog.dart';
 import 'screens/super_admin_home.dart';
@@ -9223,9 +9224,14 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                 itemBuilder: (context, index) {
                   final batch = batches[index];
                   final expiry = batch.expiryDate.toDate();
+                  final sell = batch.sellingPriceMinor;
                   return ListTile(
                     title: Text(batch.batchNumber),
-                    subtitle: Text(ExpiryPriority.label(expiry)),
+                    subtitle: Text(
+                      '${ExpiryPriority.label(expiry)} · '
+                      '${S.t('Buy', 'Nunua')} TZS ${batch.unitCostMinor}'
+                      '${sell != null ? ' · ${S.t('Sell', 'Uza')} TZS $sell' : ''}',
+                    ),
                     trailing: Wrap(
                       spacing: 8,
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -9280,100 +9286,14 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
             FilledButton.icon(
               onPressed: () async {
                 Navigator.pop(dialogContext);
-                await _showAddBatchDialog(context, service, medicine);
+                await showIncreaseStockDialog(context, medicine: medicine);
               },
               icon: const Icon(Icons.add),
-              label: const Text('Add batch'),
+              label: Text(S.t('Increase stock', 'Ongeza stock')),
             ),
         ],
       ),
     );
-  }
-
-  Future<void> _showAddBatchDialog(
-    BuildContext context,
-    MedicineService service,
-    Medicine medicine,
-  ) async {
-    final formKey = GlobalKey<FormState>();
-    final batchNumber = TextEditingController();
-    final quantity = TextEditingController();
-    final cost = TextEditingController();
-    DateTime expiryDate = DateTime.now().add(const Duration(days: 365));
-    final inventoryService = InventoryService();
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Add batch: ${medicine.name}'),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: batchNumber,
-                  decoration: InputDecoration(
-                    labelText: S.t(
-                      'Batch number (optional)',
-                      'Namba ya batch (si lazima)',
-                    ),
-                  ),
-                ),
-                _numberField(
-                  quantity,
-                  medicine.piecesPerPack > 1 ? 'Packs' : 'Quantity',
-                ),
-                _numberField(cost, 'Unit cost (minor units)'),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    'Expiry: ${expiryDate.day}/${expiryDate.month}/${expiryDate.year}',
-                  ),
-                  trailing: const Icon(Icons.calendar_month),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 3650)),
-                      initialDate: expiryDate,
-                    );
-                    if (picked != null)
-                      setDialogState(() => expiryDate = picked);
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                final user = AuthService().currentUser;
-                if (user == null) return;
-                await inventoryService.receiveBatch(
-                  medicineId: medicine.id,
-                  batchNumber: batchNumber.text,
-                  expiryDate: Timestamp.fromDate(expiryDate),
-                  quantity: int.parse(quantity.text),
-                  unitCostMinor: int.parse(cost.text),
-                  createdBy: user.uid,
-                );
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-    batchNumber.dispose();
-    quantity.dispose();
-    cost.dispose();
   }
 
   String _baseUnitLabel(String unit) {

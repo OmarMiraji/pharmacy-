@@ -16,6 +16,7 @@ class InventoryService {
     required Timestamp expiryDate,
     required int quantity,
     required int unitCostMinor,
+    int? sellingPriceMinor,
     required String createdBy,
     String? supplierId,
     String? purchaseId,
@@ -32,21 +33,29 @@ class InventoryService {
     }
 
     final expiry = expiryDate.toDate();
-    final month = expiry.month.toString().padLeft(2, '0');
-    final day = expiry.day.toString().padLeft(2, '0');
-    final normalizedBatch = batchNumber.trim().isEmpty ? 'STOCK-${expiry.year}$month$day' : batchNumber.trim();
     if (expiry.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
       throw ArgumentError('Expiry date cannot be in the past.');
     }
 
-    final existingBatchQuery = await TenantContext.instance
-        .scoped(_firestore.collection(FirestoreCollections.medicineBatches))
-        .where('medicineId', isEqualTo: medicineId)
-        .where('batchNumber', isEqualTo: normalizedBatch)
-        .where('isActive', isEqualTo: true)
-        .limit(1)
-        .get();
-    final existingBatchRef = existingBatchQuery.docs.isEmpty ? null : existingBatchQuery.docs.first.reference;
+    final explicitBatch = batchNumber.trim();
+    DocumentReference<Map<String, dynamic>>? existingBatchRef;
+    if (explicitBatch.isNotEmpty) {
+      final existingBatchQuery = await TenantContext.instance
+          .scoped(_firestore.collection(FirestoreCollections.medicineBatches))
+          .where('medicineId', isEqualTo: medicineId)
+          .where('batchNumber', isEqualTo: explicitBatch)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+      existingBatchRef =
+          existingBatchQuery.docs.isEmpty ? null : existingBatchQuery.docs.first.reference;
+    }
+
+    final month = expiry.month.toString().padLeft(2, '0');
+    final day = expiry.day.toString().padLeft(2, '0');
+    final normalizedBatch = explicitBatch.isEmpty
+        ? 'STOCK-${expiry.year}$month$day-${DateTime.now().millisecondsSinceEpoch}'
+        : explicitBatch;
 
     final medicineRef = _firestore.collection(FirestoreCollections.medicines).doc(medicineId);
     final batchRef = existingBatchRef ?? _firestore.collection(FirestoreCollections.medicineBatches).doc();
@@ -69,16 +78,19 @@ class InventoryService {
         batchQty = (batchSnap.data()?['quantityOnHand'] as num?)?.toInt() ?? 0;
       }
       final now = FieldValue.serverTimestamp();
+      final sellMinor = sellingPriceMinor ??
+          (medicineData['sellingPriceMinor'] as num?)?.toInt() ??
+          0;
       transaction.update(medicineRef, {
         'quantityOnHand': currentStock + stockQty,
-        'purchasePriceMinor': unitCostMinor,
-        'supplierId': supplierId ?? medicineData['supplierId'],
+        if (supplierId != null) 'supplierId': supplierId,
         'updatedAt': now,
       });
       if (existingBatchRef != null) {
         transaction.update(existingBatchRef, {
           'quantityOnHand': batchQty + stockQty,
           'unitCostMinor': unitCostMinor,
+          'sellingPriceMinor': sellMinor,
           'expiryDate': expiryDate,
           'isActive': true,
           'updatedAt': now,
@@ -90,6 +102,7 @@ class InventoryService {
           'expiryDate': expiryDate,
           'quantityOnHand': stockQty,
           'unitCostMinor': unitCostMinor,
+          'sellingPriceMinor': sellMinor,
           'supplierId': supplierId,
           'purchaseId': purchaseId,
           'isActive': true,
