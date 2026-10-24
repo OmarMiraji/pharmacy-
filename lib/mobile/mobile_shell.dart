@@ -118,6 +118,7 @@ class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
     _batchSub = tenant
         .scoped(firestore.collection(FirestoreCollections.medicineBatches))
         .where('isActive', isEqualTo: true)
+        .where('quantityOnHand', isGreaterThan: 0)
         .snapshots()
         .listen(
       (snapshot) {

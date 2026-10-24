@@ -131,6 +131,7 @@ class MedicineService {
     _batchSub = _tenant
         .scoped(_batches)
         .where('isActive', isEqualTo: true)
+        .where('quantityOnHand', isGreaterThan: 0)
         .snapshots()
         .listen((snapshot) {
       if (!snapshot.metadata.isFromCache) OfflineSyncService.instance.noteConnected();
