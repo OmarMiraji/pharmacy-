@@ -1,5 +1,5 @@
 #define MyAppName "PharmSpecio"
-#define MyAppVersion "1.0.30"
+#define MyAppVersion "1.0.31"
 #define MyAppPublisher "PharmSpecio"
 #define MyAppExeName "PharmSpecio.exe"
 #define MyAppUrl "https://github.com/OmarMiraji/pharmacy-"
@@ -34,9 +34,6 @@ WizardSizePercent=120
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checked
-
 [Files]
 Source: "..\..\build\windows\x64\runner\Release\PharmSpecio.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\build\windows\x64\runner\Release\*.dll"; DestDir: "{app}"; Flags: ignoreversion
@@ -46,7 +43,7 @@ Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Pharmacy Management System"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Pharmacy Management System"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Pharmacy Management System"
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ runtime required by PharmSpecio..."; Flags: waituntilterminated
