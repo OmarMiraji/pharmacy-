@@ -1,5 +1,5 @@
 #define MyAppName "PharmSpecio"
-#define MyAppVersion "1.0.25"
+#define MyAppVersion "1.0.26"
 #define MyAppPublisher "PharmSpecio"
 #define MyAppExeName "PharmSpecio.exe"
 #define MyAppUrl "https://github.com/OmarMiraji/pharmacy-"

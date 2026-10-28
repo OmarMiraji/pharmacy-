@@ -31,13 +31,12 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release
 
-      - name: Zip installer folder
+      - name: Package Windows release (verify DLLs + setup folder)
         shell: pwsh
         run: |
-          $src = "build\windows\x64\runner\Release"
-          if (-not (Test-Path $src)) { throw "Windows build output was not found." }
-          Compress-Archive -Path "$src\*" -DestinationPath "phyimacy-windows.zip" -Force
-          Copy-Item "phyimacy-windows.zip" "pharmspecio-windows.zip"
+          pwsh -NoProfile -File windows/installer/package_windows_release.ps1
+          Copy-Item dist/pharmspecio-windows.zip phyimacy-windows.zip -Force
+          Copy-Item dist/pharmspecio-windows.zip pharmspecio-windows.zip -Force
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -45,6 +44,7 @@ jobs:
           files: |
             phyimacy-windows.zip
             pharmspecio-windows.zip
+            dist/PharmSpecio-Setup-Package-*.zip
           generate_release_notes: true
           make_latest: true
 
