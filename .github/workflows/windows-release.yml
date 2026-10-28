@@ -38,17 +38,28 @@ jobs:
           Copy-Item dist/pharmspecio-windows.zip phyimacy-windows.zip -Force
           Copy-Item dist/pharmspecio-windows.zip pharmspecio-windows.zip -Force
 
-      - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          $installer = "$env:RUNNER_TEMP\innosetup.exe"
+          Invoke-WebRequest -Uri "https://files.jrsoftware.org/is/6/innosetup-6.3.3.exe" -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
 
       - name: Build PharmSpecio-Setup.exe (wizard installer)
         shell: pwsh
         run: |
           $version = (Select-String -Path pubspec.yaml -Pattern 'version:\s*([\d.]+)\+' | ForEach-Object { $_.Matches.Groups[1].Value })
-          $iss = "windows/installer/pharmspecio.iss"
+          $iss = Join-Path $PWD "windows\installer\pharmspecio.iss"
           (Get-Content $iss -Raw) -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$version`"" | Set-Content $iss -NoNewline
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" $iss
-          if (-not (Test-Path "dist/PharmSpecio-Setup-$version.exe")) { throw "Setup.exe was not created" }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc $iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed with exit code $LASTEXITCODE" }
+          $setup = Join-Path $PWD "dist\PharmSpecio-Setup-$version.exe"
+          if (-not (Test-Path $setup)) { throw "Setup.exe was not created at $setup" }
+          Write-Host "Created $setup ($((Get-Item $setup).Length) bytes)"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2

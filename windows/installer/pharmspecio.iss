@@ -1,5 +1,5 @@
 #define MyAppName "PharmSpecio"
-#define MyAppVersion "1.0.28"
+#define MyAppVersion "1.0.29"
 #define MyAppPublisher "PharmSpecio"
 #define MyAppExeName "PharmSpecio.exe"
 #define MyAppUrl "https://github.com/OmarMiraji/pharmacy-"
@@ -30,7 +30,6 @@ RestartApplications=no
 UsePreviousAppDir=yes
 DisableWelcomePage=no
 WizardSizePercent=120
-UninstallDisplayName={#MyAppName} {#MyAppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -41,14 +40,14 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "..\..\build\windows\x64\runner\Release\PharmSpecio.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\build\windows\x64\runner\Release\*.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "runtime\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "runtime\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\..\build\windows\x64\runner\Release\native_assets.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\..\build\windows\x64\runner\Release\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Comment: "Pharmacy Management System"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Comment: "Pharmacy Management System"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Pharmacy Management System"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Pharmacy Management System"; Tasks: desktopicon
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ runtime required by PharmSpecio..."; Flags: waituntilterminated
