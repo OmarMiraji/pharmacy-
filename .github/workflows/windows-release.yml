@@ -39,13 +39,25 @@ jobs:
           Copy-Item dist/pharmspecio-windows.zip pharmspecio-windows.zip -Force
 
       - name: Install Inno Setup 6
+        run: choco install innosetup --no-progress -y
+
+      - name: Locate ISCC.exe
+        id: iscc
         shell: pwsh
         run: |
-          $installer = "$env:RUNNER_TEMP\innosetup.exe"
-          Invoke-WebRequest -Uri "https://files.jrsoftware.org/is/6/innosetup-6.3.3.exe" -OutFile $installer
-          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          )
+          foreach ($path in $candidates) {
+            if (Test-Path $path) {
+              Write-Host "Found ISCC at $path"
+              "path=$path" >> $env:GITHUB_OUTPUT
+              exit 0
+            }
+          }
+          Get-ChildItem -Path "${env:ProgramFiles(x86)}" -Filter ISCC.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Candidate: $($_.FullName)" }
+          throw "ISCC.exe not found after Inno Setup install"
 
       - name: Build PharmSpecio-Setup.exe (wizard installer)
         shell: pwsh
@@ -54,7 +66,7 @@ jobs:
           $iss = Join-Path $PWD "windows\installer\pharmspecio.iss"
           (Get-Content $iss -Raw) -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$version`"" | Set-Content $iss -NoNewline
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $iscc = "${{ steps.iscc.outputs.path }}"
           & $iscc $iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed with exit code $LASTEXITCODE" }
           $setup = Join-Path $PWD "dist\PharmSpecio-Setup-$version.exe"
