@@ -38,10 +38,23 @@ jobs:
           Copy-Item dist/pharmspecio-windows.zip phyimacy-windows.zip -Force
           Copy-Item dist/pharmspecio-windows.zip pharmspecio-windows.zip -Force
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build PharmSpecio-Setup.exe (wizard installer)
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern 'version:\s*([\d.]+)\+' | ForEach-Object { $_.Matches.Groups[1].Value })
+          $iss = "windows/installer/pharmspecio.iss"
+          (Get-Content $iss -Raw) -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$version`"" | Set-Content $iss -NoNewline
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" $iss
+          if (-not (Test-Path "dist/PharmSpecio-Setup-$version.exe")) { throw "Setup.exe was not created" }
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/PharmSpecio-Setup-*.exe
             phyimacy-windows.zip
             pharmspecio-windows.zip
             dist/PharmSpecio-Setup-Package-*.zip

@@ -1,0 +1,19 @@
+PharmSpecio — SETUP MOJA (PharmSpecio-Setup-X.exe)
+
+Hii ndiyo faili pekee unayopeana kwa maduka.
+
+Kwa user wa duka:
+1. Pokea faili: PharmSpecio-Setup-1.0.28.exe (si zip, si folder).
+2. Double-click → Next → Install (kubali Admin).
+3. Mwisho: shortcut kwenye Desktop + Start Menu.
+4. Fungua PharmSpecio kutoka Desktop.
+
+Programu iko: C:\Program Files\PharmSpecio
+(Kuondoa: Settings → Apps → PharmSpecio → Uninstall)
+
+Kwa developer (kutengeneza Setup.exe kwenye PC yako):
+1. Weka Inno Setup 6: https://jrsoftware.org/isinfo.php
+2. Flutter SDK sahihi (angalia pubspec.yaml)
+3. PowerShell: cd E:\Phyimacy\windows\installer
+4. .\build_setup.ps1
+5. Tokeo: E:\Phyimacy\dist\PharmSpecio-Setup-1.0.28.exe
