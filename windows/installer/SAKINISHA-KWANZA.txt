@@ -1,0 +1,12 @@
+PharmSpecio — SOMA KWANZA (Windows)
+
+PharmSpecio.exe SI "Setup" / installer.
+Ni programu yenyewe — ikifunguka mara moja bila wizard, hiyo ni kawaida.
+
+Kusakinisha kwenye PC (Program Files + shortcut Desktop):
+  → Bofya mara mbili:  Install-PharmSpecio.bat
+  → Kubali "Run as administrator"
+  → Subiri ujumbe "Done"
+  → Fungua PharmSpecio kutoka Desktop
+
+Usihamishi PharmSpecio.exe peke yake — lazima folder nzima (dll + data).

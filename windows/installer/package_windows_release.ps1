@@ -35,10 +35,23 @@ if ($missing.Count -gt 0) {
 $distRoot = Join-Path $repoRoot "dist"
 New-Item -ItemType Directory -Force -Path $distRoot | Out-Null
 
+$stageDir = Join-Path $distRoot "pharmspecio-windows-$version"
+if (Test-Path $stageDir) { Remove-Item $stageDir -Recurse -Force }
+New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+Copy-Item -Path "$releaseDir\*" -Destination $stageDir -Recurse -Force
+Copy-Item (Join-Path $PSScriptRoot "Install-PharmSpecio.ps1") $stageDir -Force
+Copy-Item (Join-Path $PSScriptRoot "Install-PharmSpecio.bat") $stageDir -Force
+Copy-Item (Join-Path $PSScriptRoot "SAKINISHA-KWANZA.txt") $stageDir -Force
+Set-Content -Path (Join-Path $stageDir "version.txt") -Value $version -NoNewline
+$redistInStage = Join-Path $stageDir "redist"
+if (Test-Path (Join-Path $PSScriptRoot "redist")) {
+  Copy-Item (Join-Path $PSScriptRoot "redist") $redistInStage -Recurse -Force
+}
+
 $zipName = "pharmspecio-windows-$version.zip"
 $zipPath = Join-Path $distRoot $zipName
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-Compress-Archive -Path "$releaseDir\*" -DestinationPath $zipPath -Force
+Compress-Archive -Path "$stageDir\*" -DestinationPath $zipPath -Force
 Copy-Item $zipPath (Join-Path $distRoot "pharmspecio-windows.zip") -Force
 
 $packageDir = Join-Path $distRoot "PharmSpecio-Setup-Package-$version"
@@ -55,6 +68,7 @@ if (Test-Path $redistSrc) {
 
 Copy-Item (Join-Path $PSScriptRoot "Install-PharmSpecio.ps1") $packageDir -Force
 Copy-Item (Join-Path $PSScriptRoot "Install-PharmSpecio.bat") $packageDir -Force
+Copy-Item (Join-Path $PSScriptRoot "SAKINISHA-KWANZA.txt") $packageDir -Force
 Set-Content -Path (Join-Path $packageDir "version.txt") -Value $version -NoNewline
 
 $guide = @"

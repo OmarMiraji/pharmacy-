@@ -31,12 +31,18 @@ function Test-PharmSpecioBundle {
   }
 }
 
-if (-not (Test-Path $source)) {
-  $alt = Join-Path $PSScriptRoot "portable"
-  if (Test-Path $alt) { $source = $alt } else {
-    Write-Host "Missing folder: $source"
-    Write-Host "Use the full Setup package from GitHub, not a single .exe file."
-    exit 1
+if (-not (Test-Path (Join-Path $source "PharmSpecio.exe"))) {
+  if (Test-Path (Join-Path $PSScriptRoot "PharmSpecio.exe")) {
+    $source = $PSScriptRoot
+  } else {
+    $alt = Join-Path $PSScriptRoot "portable"
+    if (Test-Path (Join-Path $alt "PharmSpecio.exe")) {
+      $source = $alt
+    } else {
+      Write-Host "Missing app files in: $PSScriptRoot"
+      Write-Host "Extract the FULL zip, then run Install-PharmSpecio.bat (not PharmSpecio.exe for install)."
+      exit 1
+    }
   }
 }
 
