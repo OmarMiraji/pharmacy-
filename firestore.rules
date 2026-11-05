@@ -262,6 +262,14 @@ service cloud.firestore {
           .hasOnly(['displayName', 'phone', 'updatedAt']);
     }
 
+    function selfPasswordFlagClear(userId) {
+      return request.auth.uid == userId
+        && request.resource.data.mustChangePassword == false
+        && !('tempPassword' in request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['mustChangePassword', 'tempPassword', 'passwordChangedAt', 'updatedAt']);
+    }
+
     function shopIdOf(data) {
       return data != null && 'pharmacyId' in data && data.pharmacyId is string ? data.pharmacyId : '';
     }
@@ -336,6 +344,25 @@ service cloud.firestore {
         );
     }
 
+    function saleVoidOnly() {
+      return request.resource.data.get('status', '') == 'voided'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'voidedAt', 'voidedBy', 'voidedByName', 'updatedAt']);
+    }
+
+    function saleRecordUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'receiptNumber', 'customerId', 'status', 'paymentMethod', 'subtotalMinor',
+        'discountMinor', 'taxMinor', 'totalMinor', 'soldBy', 'soldByName', 'itemNames',
+        'createdAt', 'pharmacyId', 'voidedAt', 'voidedBy', 'voidedByName'
+      ]);
+    }
+
+    // Staff may void a sale but not rewrite it; shop managers keep full edit (backup restore).
+    function saleUpdateShapeAllowed(id) {
+      return saleVoidOnly() || saleRecordUnchanged() || isManager(me(), shopData(id));
+    }
+
     function medicineUpdateAllowed(id) {
       let u = me();
       let s = shopData(id);
@@ -358,6 +385,54 @@ service cloud.firestore {
       );
     }
 
+    function activationCodeUsable(code, pharmacyId) {
+      return code.get('isUsed', false) != true
+        && (
+          code.get('pharmacyId', '') == null
+          || code.get('pharmacyId', '') == ''
+          || code.get('pharmacyId', '') == pharmacyId
+        );
+    }
+
+    function activationMaxDays(code) {
+      return code.get('durationDays', null) is int
+        && code.get('durationDays', 0) > 0
+        && code.get('durationDays', 0) <= 3660
+        ? code.get('durationDays', 0) + 2
+        : 400;
+    }
+
+    // Cheap shape checks run before any document reads; rules stop after 1000 expressions.
+    function activationShape() {
+      let next = request.resource.data;
+      let codeId = next.get('activationCode', '');
+      return next.get('status', '') == 'active'
+        && next.get('isUnlocked', false) == true
+        && codeId is string
+        && codeId != resource.data.get('activationCode', '')
+        && codeId.matches('^PHY-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$')
+        && next.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'plan', 'isTrial', 'isUnlocked', 'startsAt',
+          'expiresAt', 'trialEndsAt', 'activationCode', 'updatedAt'
+        ]);
+    }
+
+    // A shop user unlocks their own shop with a real, unused activation code.
+    function activationUpdateValid(pharmacyId) {
+      let next = request.resource.data;
+      let codeId = next.activationCode;
+      return exists(/databases/$(database)/documents/subscription_codes/$(codeId))
+        && activationCodeUsable(
+          get(/databases/$(database)/documents/subscription_codes/$(codeId)).data,
+          pharmacyId
+        )
+        && next.get('expiresAt', null) is timestamp
+        && next.expiresAt <= request.time + duration.value(
+          activationMaxDays(get(/databases/$(database)/documents/subscription_codes/$(codeId)).data),
+          'd'
+        );
+    }
+
     match /pharmacies/{pharmacyId} {
       allow get: if signedIn() && (
         inShop(pharmacyId)
@@ -372,10 +447,9 @@ service cloud.firestore {
         )
       );
       allow create: if isSuperAdmin();
-      allow update: if signedIn()
-        && request.resource.data.activationCode is string
-        && request.resource.data.status == 'active'
-        && request.resource.data.isUnlocked == true;
+      allow update: if activationShape()
+        && inShop(pharmacyId)
+        && activationUpdateValid(pharmacyId);
       allow update: if isSuperAdmin();
       allow update: if belongsToTenant(pharmacyId)
         && hasPermission('settings.manage')
@@ -408,7 +482,7 @@ service cloud.firestore {
         && request.resource.data.pharmacyId == tenantId()
         && request.resource.data.role in ['pharmacist', 'cashier', 'storekeeper']
       );
-      allow update: if isSuperAdmin() || selfProfileUpdate(userId) || shopAdminUpdatesStaff(userId) || (
+      allow update: if isSuperAdmin() || selfProfileUpdate(userId) || selfPasswordFlagClear(userId) || shopAdminUpdatesStaff(userId) || (
         request.auth.uid == userId
         && request.resource.data.role == 'admin'
         && request.resource.data.pharmacyId is string
@@ -504,6 +578,7 @@ service cloud.firestore {
         && saleDiscountAllowed(request.resource.data);
       allow update: if request.resource.data.pharmacyId == resource.data.pharmacyId
         && saleTotalsValid(request.resource.data)
+        && saleUpdateShapeAllowed(resource.data.pharmacyId)
         && saleDiscountAllowed(request.resource.data)
         && canWriteEither(resource.data.pharmacyId, 'sales.create', 'sales.refund');
       allow delete: if isSuperAdmin();
@@ -565,6 +640,9 @@ service cloud.firestore {
         && request.resource.data.usedByUserId == request.auth.uid
         && request.resource.data.usedByPharmacyId is string
         && request.resource.data.usedByPharmacyId.size() > 0
+        && inShop(request.resource.data.usedByPharmacyId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isUsed', 'usedByPharmacyId', 'usedByUserId', 'usedAt', 'updatedAt'])
         && (
           !('pharmacyId' in resource.data)
           || resource.data.pharmacyId == null
@@ -626,12 +704,12 @@ service cloud.firestore {
     }
 
     match /mail_settings/{docId} {
-      allow read: if isSuperAdmin() || firestoreRole() == 'admin';
-      allow write: if isSuperAdmin();
+      allow read, write: if isSuperAdmin();
     }
 
     match /auth_index/{id} {
-      allow read, write: if isSuperAdmin() || firestoreRole() == 'admin';
+      allow read: if isSuperAdmin() || firestoreRole() == 'admin';
+      allow write: if isSuperAdmin();
     }
   }
 }

@@ -5,6 +5,7 @@ import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/tenant_context.dart';
 import '../backend/tanzania_phone.dart';
+import '../backend/temp_password.dart';
 import '../backend/transactional_email_service.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
@@ -18,17 +19,15 @@ Future<void> showCreateStaffDialog(
   required bool canManageSuperAdmin,
   String? presetPharmacyId,
 }) async {
+  final hostContext = context;
   final name = TextEditingController();
   final email = TextEditingController();
-  final password = TextEditingController();
-  final confirmPassword = TextEditingController();
+  final password = TextEditingController(text: TempPassword.generate());
   final phone = TextEditingController();
   final employeeCode = TextEditingController();
   final pharmacyName = TextEditingController();
   final pharmacySearch = TextEditingController();
   var role = canManageSuperAdmin ? 'admin' : 'pharmacist';
-  var hidePassword = true;
-  var hideConfirm = true;
   var shopMode = 'existing';
   var selectedPharmacyId = (presetPharmacyId ?? TenantContext.instance.pharmacyId ?? '').trim();
   var creating = false;
@@ -75,33 +74,7 @@ Future<void> showCreateStaffDialog(
                           const SizedBox(height: 10),
                           TextField(controller: email, keyboardType: TextInputType.emailAddress, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: S.t('Email', 'Email'))),
                           const SizedBox(height: 10),
-                          TextField(
-                            controller: password,
-                            obscureText: hidePassword,
-                            onChanged: (_) => setState(() {}),
-                            decoration: passwordInputDecoration(
-                              label: S.t('Password', 'Nenosiri'),
-                              hidden: hidePassword,
-                              onToggle: () => setState(() => hidePassword = !hidePassword),
-                              errorText: password.text.isNotEmpty && password.text.trim().length < 6
-                                  ? S.t('Use at least 6 characters.', 'Tumia herufi 6 au zaidi.')
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: confirmPassword,
-                            obscureText: hideConfirm,
-                            onChanged: (_) => setState(() {}),
-                            decoration: passwordInputDecoration(
-                              label: S.t('Confirm password', 'Thibitisha nenosiri'),
-                              hidden: hideConfirm,
-                              onToggle: () => setState(() => hideConfirm = !hideConfirm),
-                              errorText: confirmPassword.text.isNotEmpty && password.text != confirmPassword.text
-                                  ? S.t('Passwords do not match.', 'Nenosiri hayafanani.')
-                                  : null,
-                            ),
-                          ),
+                          TemporaryPasswordField(controller: password, onChanged: () => setState(() {})),
                           const SizedBox(height: 10),
                           TextField(
                             controller: phone,
@@ -303,7 +276,6 @@ Future<void> showCreateStaffDialog(
                                 name.text.trim().isNotEmpty &&
                                 email.text.trim().isNotEmpty &&
                                 password.text.trim().length >= 6 &&
-                                password.text == confirmPassword.text &&
                                 TanzaniaPhone.validate(phone.text) == null &&
                                 (!canManageSuperAdmin ||
                                     (shopMode == 'new'
@@ -311,6 +283,8 @@ Future<void> showCreateStaffDialog(
                                         : selectedPharmacyId.trim().isNotEmpty))
                             ? () async {
                           setState(() => creating = true);
+                          final initialPassword = password.text.trim();
+                          final loginEmail = email.text.trim().toLowerCase();
                           try {
                             var createdShopId = canManageSuperAdmin ? selectedPharmacyId : (TenantContext.instance.pharmacyId ?? '');
                             if (canManageSuperAdmin && shopMode == 'new') {
@@ -318,7 +292,7 @@ Future<void> showCreateStaffDialog(
                                 name: pharmacyName.text.trim(),
                                 ownerEmail: email.text,
                                 ownerDisplayName: name.text,
-                                ownerPassword: password.text,
+                                ownerPassword: initialPassword,
                               );
                               createdShopId = provision.pharmacyId;
                               await service.updateProfileDetails(
@@ -332,11 +306,12 @@ Future<void> showCreateStaffDialog(
                                 isActive: true,
                                 pharmacyId: provision.pharmacyId,
                               );
+                              await service.markTemporaryPassword(userId: provision.adminUid, password: initialPassword);
                             } else {
                               await service.createLoginAndProfile(
                                 displayName: name.text,
                                 email: email.text,
-                                password: password.text,
+                                password: initialPassword,
                                 phone: TanzaniaPhone.normalize(phone.text),
                                 employeeCode: employeeCode.text,
                                 role: role,
@@ -355,21 +330,24 @@ Future<void> showCreateStaffDialog(
                                 pharmacyId: createdShopId,
                                 shopName: shopMode == 'new' ? pharmacyName.text : null,
                                 isNewShop: shopMode == 'new',
+                                temporaryPassword: initialPassword,
                               );
                             } catch (_) {}
-                            if (context.mounted) {
+                            if (hostContext.mounted) {
                               final created = shopMode == 'new'
                                   ? S.t('New pharmacy and admin login are ready.', 'Duka jipya na login ya admin viko tayari.')
                                   : S.t('Staff login is ready.', 'Login ya staff iko tayari.');
                               final mailLine = switch (mailNote) {
-                                null => null,
-                                'email-not-ready' => S.t('Set up Gmail first', 'Weka Gmail kwanza'),
-                                _ => S.t('Email was not sent', 'Barua pepe haijatumwa'),
+                                null => S.t('The login details were emailed to them.', 'Taarifa za login zimetumwa kwenye email yao.'),
+                                'email-not-ready' => S.t('Email is not set up, so share these details yourself.', 'Email haijawekwa, wape taarifa hizi wewe mwenyewe.'),
+                                _ => S.t('The email was not sent, so share these details yourself.', 'Email haijatumwa, wape taarifa hizi wewe mwenyewe.'),
                               };
-                              showAppNotice(
-                                context,
-                                mailLine == null ? created : '$created $mailLine',
-                                kind: mailLine == null ? AppNoticeKind.success : AppNoticeKind.error,
+                              await showTemporaryPasswordReadyDialog(
+                                hostContext,
+                                title: created,
+                                email: loginEmail,
+                                password: initialPassword,
+                                note: mailLine,
                               );
                             }
                           } catch (error) {
@@ -395,7 +373,6 @@ Future<void> showCreateStaffDialog(
   name.dispose();
   email.dispose();
   password.dispose();
-  confirmPassword.dispose();
   phone.dispose();
   employeeCode.dispose();
   pharmacyName.dispose();

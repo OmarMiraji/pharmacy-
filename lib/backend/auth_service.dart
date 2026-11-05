@@ -54,16 +54,37 @@ class AuthService {
     required String newPassword,
   }) async {
     final next = newPassword.trim();
-    if (next.length < 6) throw ArgumentError('New password must be at least 6 characters.');
+    if (next.length < minOwnPasswordLength) {
+      throw ArgumentError('New password must be at least $minOwnPasswordLength characters.');
+    }
+    if (next == currentPassword.trim()) {
+      throw ArgumentError('Choose a new password that is different from the current one.');
+    }
     await confirmPassword(currentPassword);
     try {
       await currentUser!.updatePassword(next);
     } on FirebaseAuthException catch (error) {
       if (error.code == 'weak-password') {
-        throw StateError('Choose a stronger password (at least 6 characters).');
+        throw StateError('Choose a stronger password (at least $minOwnPasswordLength characters).');
       }
       throw StateError(error.message ?? 'Could not change password.');
     }
+    try {
+      await clearTemporaryPasswordFlag();
+    } catch (_) {}
+  }
+
+  static const minOwnPasswordLength = 8;
+
+  Future<void> clearTemporaryPasswordFlag() async {
+    final uid = currentUser?.uid;
+    if (uid == null) return;
+    await FirebaseFirestore.instance.collection(FirestoreCollections.users).doc(uid).update({
+      'mustChangePassword': false,
+      'tempPassword': FieldValue.delete(),
+      'passwordChangedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> sendPasswordReset(String email) async {
@@ -132,7 +153,7 @@ class AuthService {
           permissions: {for (final permission in AppPermissions.all) permission: true},
           isActive: true,
           pharmacyId: profile.pharmacyId,
-        );
+        ).withPasswordState(profile);
         await userDocRef.set({
           'displayName': seed.displayName,
           'email': seed.email,
@@ -166,7 +187,7 @@ class AuthService {
           isActive: true,
           phone: profile.phone,
           pharmacyId: pharmacyId.isEmpty ? profile.pharmacyId : pharmacyId,
-        );
+        ).withPasswordState(profile);
         try {
           await userDocRef.set({
             'displayName': upgraded.displayName,

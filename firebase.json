@@ -6,11 +6,27 @@
   "functions": {
     "source": "functions"
   },
-  "hosting": {
-    "public": "build/web",
+  "hosting": [
+  {
+    "site": "phyimacy-management-system",
+    "public": "build/site",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "redirects": [{ "source": "/:path*", "destination": "https://pharmspecio.web.app/:path*", "type": 301 }]
+  },
+  {
+    "site": "pharmspecio",
+    "public": "build/site",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "redirects": [{ "source": "/app", "destination": "/app/", "type": 301 }],
+    "rewrites": [
+      { "source": "/app/**", "destination": "/app/index.html" },
+      { "source": "**", "destination": "/index.html" }
+    ],
     "headers": [
+      {
+        "source": "**/*.@(css|jpg|jpeg|webp)",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+      },
       {
         "source": "**/*.@(js|wasm|mjs|json|otf|ttf|png|jpg|svg|ico)",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
@@ -24,7 +40,8 @@
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ]
-  },
+  }
+  ],
   "flutter": {
     "platforms": {
       "dart": {

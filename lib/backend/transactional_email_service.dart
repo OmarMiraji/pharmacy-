@@ -9,7 +9,7 @@ class TransactionalEmailService {
   static const _userKey = 'pharmspecio_smtp_user';
   static const _passKey = 'pharmspecio_smtp_pass';
   static const _storage = FlutterSecureStorage();
-  static const webAppUrl = 'https://phyimacy-management-system.web.app';
+  static const webAppUrl = 'https://pharmspecio.web.app/app/';
 
   Future<void> saveSmtp({required String gmail, required String appPassword}) async {
     final user = gmail.trim().toLowerCase();
@@ -34,9 +34,11 @@ class TransactionalEmailService {
     String? pharmacyId,
     String? shopName,
     bool isNewShop = false,
+    String? temporaryPassword,
   }) async {
     final mail = toEmail.trim().toLowerCase();
     if (mail.isEmpty || role == 'super_admin') return null;
+    final temp = (temporaryPassword ?? '').trim();
     var shop = (shopName ?? '').trim();
     DateTime? trialEnds;
     var trial = isNewShop;
@@ -55,13 +57,13 @@ class TransactionalEmailService {
       return send(
         to: mail,
         subject: 'Welcome to PharmSpecio${shop.isEmpty ? '' : ' — $shop'}',
-        text: _adminWelcomeText(displayName, mail, shop, trial, trialEnds),
+        text: _adminWelcomeText(displayName, mail, shop, trial, trialEnds, temp),
       );
     }
     return send(
       to: mail,
       subject: 'Your PharmSpecio login${shop.isEmpty ? '' : ' — $shop'}',
-      text: _staffWelcomeText(displayName, mail, shop, role),
+      text: _staffWelcomeText(displayName, mail, shop, role, temp),
     );
   }
 
@@ -141,7 +143,7 @@ class TransactionalEmailService {
     );
   }
 
-  String _adminWelcomeText(String name, String email, String shop, bool trial, DateTime? trialEnds) {
+  String _adminWelcomeText(String name, String email, String shop, bool trial, DateTime? trialEnds, String temp) {
     final who = name.trim().isEmpty ? email : name.trim();
     final until = trialEnds == null ? '' : '${trialEnds.day}/${trialEnds.month}/${trialEnds.year}';
     return [
@@ -150,15 +152,19 @@ class TransactionalEmailService {
       'Welcome to PharmSpecio. Your shop admin login is ready.',
       if (shop.isNotEmpty) 'Shop: $shop',
       'Login email: $email',
+      if (temp.isNotEmpty) 'Temporary password: $temp',
       'Role: Shop admin',
       if (trial) 'You are on a 7-day free trial${until.isEmpty ? '' : ', until $until'}.',
       '',
-      'Open the PharmSpecio Windows app and sign in with this email and the password that was set for you.',
+      temp.isNotEmpty
+          ? 'Open the PharmSpecio Windows app and sign in with this email and temporary password.'
+          : 'Open the PharmSpecio Windows app and sign in with this email and the password that was set for you.',
       'You can also sign in from a browser: $webAppUrl',
+      ..._tempPasswordFooter(temp),
     ].join('\n');
   }
 
-  String _staffWelcomeText(String name, String email, String shop, String role) {
+  String _staffWelcomeText(String name, String email, String shop, String role, String temp) {
     final who = name.trim().isEmpty ? email : name.trim();
     return [
       'Hello $who,',
@@ -166,10 +172,23 @@ class TransactionalEmailService {
       'A PharmSpecio login has been created for you.',
       if (shop.isNotEmpty) 'Shop: $shop',
       'Login email: $email',
+      if (temp.isNotEmpty) 'Temporary password: $temp',
       'Role: $role',
       '',
-      'Sign in on the PharmSpecio Windows app with this email and the password your shop admin gave you.',
+      temp.isNotEmpty
+          ? 'Sign in on the PharmSpecio Windows app with this email and temporary password.'
+          : 'Sign in on the PharmSpecio Windows app with this email and the password your shop admin gave you.',
       'You can also sign in from a browser: $webAppUrl',
+      ..._tempPasswordFooter(temp),
     ].join('\n');
   }
+
+  List<String> _tempPasswordFooter(String temp) => temp.isEmpty
+      ? const []
+      : const [
+          '',
+          'The first time you sign in you will be asked to choose your own password. Do not share it with anyone.',
+          '',
+          'Utaombwa kuchagua nenosiri lako mwenyewe mara ya kwanza ukiingia. Usimpe mtu yeyote.',
+        ];
 }

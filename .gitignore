@@ -49,3 +49,6 @@ app.*.map.json
 
 windows/flutter/ephemeral/
 functions/node_modules/
+
+# Local Windows packaging output
+/dist/

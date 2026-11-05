@@ -20,6 +20,42 @@ async function loadCaller(uid) {
   return caller;
 }
 
+const SHOP_STAFF_ROLES = ["pharmacist", "cashier", "storekeeper"];
+
+// A shop admin may only touch a staff login of their own shop, or a leftover login with no
+// profile that does not own another shop. Throws when the target is off limits.
+async function assertShopAdminMayManage(caller, targetUid, targetEmail) {
+  const shop = String(caller.pharmacyId || "").trim();
+  if (!shop) {
+    throw new HttpsError("permission-denied", "This login is not linked to a pharmacy.");
+  }
+  const db = admin.firestore();
+  if (targetUid) {
+    const profile = await db.collection("users").doc(targetUid).get();
+    if (profile.exists) {
+      const data = profile.data() || {};
+      const role = String(data.role || "").trim().toLowerCase();
+      const targetShop = String(data.pharmacyId || "").trim();
+      if (!SHOP_STAFF_ROLES.includes(role) || targetShop !== shop) {
+        throw new HttpsError("permission-denied", "That login belongs to someone outside your pharmacy staff.");
+      }
+      return;
+    }
+  }
+  const owned = [];
+  if (targetUid) {
+    const byUid = await db.collection("pharmacies").where("ownerUserId", "==", targetUid).limit(5).get();
+    byUid.forEach((doc) => owned.push(doc.id));
+  }
+  if (targetEmail) {
+    const byEmail = await db.collection("pharmacies").where("ownerEmail", "==", targetEmail).limit(5).get();
+    byEmail.forEach((doc) => owned.push(doc.id));
+  }
+  if (owned.some((id) => id !== shop)) {
+    throw new HttpsError("permission-denied", "That login belongs to another pharmacy.");
+  }
+}
+
 exports.setUserPassword = onCall({region: "us-central1"}, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in first.");
@@ -102,6 +138,7 @@ exports.createAuthUser = onCall({region: "us-central1"}, async (request) => {
     if (!["pharmacist", "cashier", "storekeeper"].includes(intendedRole)) {
       throw new HttpsError("permission-denied", "Shop staff roles are pharmacist, cashier, or storekeeper.");
     }
+    await assertShopAdminMayManage(caller, "", email);
   }
 
   try {
@@ -146,9 +183,13 @@ exports.recycleAuthUser = onCall({region: "us-central1"}, async (request) => {
   }
   try {
     const existing = await admin.auth().getUserByEmail(email);
+    if (!isSuper) {
+      await assertShopAdminMayManage(caller, existing.uid, email);
+    }
     await admin.auth().updateUser(existing.uid, {password, disabled: false, emailVerified: true});
     return {uid: existing.uid, restored: true};
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     if (error && error.code === "auth/user-not-found") {
       const created = await admin.auth().createUser({
         email,
@@ -178,6 +219,16 @@ exports.deleteAuthUser = onCall({region: "us-central1"}, async (request) => {
   const isSuper = callerIsSuper(caller, request.auth.token);
   if (!isSuper && callerRole !== "admin") {
     throw new HttpsError("permission-denied", "You cannot delete that login.");
+  }
+  if (!isSuper) {
+    let targetEmail = "";
+    try {
+      targetEmail = String((await admin.auth().getUser(uid)).email || "").trim().toLowerCase();
+    } catch (error) {
+      if (error && error.code === "auth/user-not-found") return {ok: true};
+      throw new HttpsError("internal", "Could not check that Firebase login.");
+    }
+    await assertShopAdminMayManage(caller, uid, targetEmail);
   }
   try {
     await admin.auth().deleteUser(uid);

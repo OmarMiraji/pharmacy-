@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PharmSpecio — Pharmacy Management System in Tanzania</title>
+  <meta name="description" content="PharmSpecio is a pharmacy management system for Tanzania: point of sale, stock and batches, expiry alerts, purchases, staff permissions and profit reports. Works on Windows, Android and the web. Free 7-day trial.">
+  <meta name="keywords" content="PharmSpecio, pharmacy management system, pharmacy software Tanzania, pharmacy POS, duka la dawa, mfumo wa duka la dawa, stock management, expiry tracking">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://pharmspecio.web.app/">
+  <meta name="theme-color" content="#0F3D36">
+  <meta property="og:site_name" content="PharmSpecio">
+  <meta property="og:title" content="PharmSpecio — Pharmacy Management System">
+  <meta property="og:description" content="Sales, stock, expiry, purchases, staff and reports in one place. Try it free for 7 days.">
+  <meta property="og:url" content="https://pharmspecio.web.app/">
+  <meta property="og:image" content="https://pharmspecio.web.app/assets/screens/dashboard.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "PharmSpecio",
+    "url": "https://pharmspecio.web.app/",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Windows, Android, Web",
+    "description": "Pharmacy management system: point of sale, stock, expiry tracking, purchases, staff and reports.",
+    "image": "https://pharmspecio.web.app/assets/screens/dashboard.png",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "TZS", "description": "7-day free trial" },
+    "contactPoint": { "@type": "ContactPoint", "telephone": "+255624071543", "contactType": "sales" }
+  }
+  </script>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    // Installed app (home-screen PWA) goes straight to sign-in.
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+      location.replace('/app/');
+    }
+    try {
+      var saved = localStorage.getItem('ps_lang');
+      if (saved === 'en' || saved === 'sw') document.documentElement.setAttribute('data-lang', saved);
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="nav" id="top">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="PharmSpecio">
+        <img src="/assets/logo.png" alt="" width="40" height="40">
+        <span>Pharm<b>Specio</b></span>
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#features"><span lang="sw">Huduma</span><span lang="en">Features</span></a>
+        <a href="#screens"><span lang="sw">Picha</span><span lang="en">Screens</span></a>
+        <a href="#how"><span lang="sw">Jinsi inavyofanya</span><span lang="en">How it works</span></a>
+        <a href="#contact"><span lang="sw">Mawasiliano</span><span lang="en">Contact</span></a>
+      </nav>
+      <div class="nav-actions">
+        <button class="lang" type="button" data-toggle-lang aria-label="Change language">
+          <span lang="sw">EN</span><span lang="en">SW</span>
+        </button>
+        <a class="btn btn-solid" href="/app/">
+          <span lang="sw">Ingia</span><span lang="en">Sign in</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">
+            <span lang="sw">Mfumo wa kusimamia duka la dawa</span>
+            <span lang="en">Pharmacy management system</span>
+          </p>
+          <h1>
+            <span lang="sw">Duka lako la dawa, <em>kwa mpangilio</em> — popote ulipo.</span>
+            <span lang="en">Your pharmacy, <em>in order</em> — wherever you are.</span>
+          </h1>
+          <p class="lead">
+            <span lang="sw">Uza haraka, jua stock iliyobaki, pata taarifa kabla dawa hazijaisha muda, na ona faida ya kila siku. PharmSpecio inafanya kazi kwenye Windows, Android na kivinjari (web).</span>
+            <span lang="en">Sell faster, know exactly what is left on the shelf, get warned before medicines expire, and see daily profit. PharmSpecio runs on Windows, Android and in the browser.</span>
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-gold btn-lg" href="https://wa.me/255624071543?text=Habari%2C%20naomba%20kujaribu%20PharmSpecio%20bure%20siku%207." target="_blank" rel="noopener">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.7 11.7 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg>
+              <span lang="sw">Jaribu bure siku 7</span><span lang="en">Try free for 7 days</span>
+            </a>
+            <a class="btn btn-ghost btn-lg" href="/app/">
+              <span lang="sw">Tayari una akaunti? Ingia</span><span lang="en">Have an account? Sign in</span>
+            </a>
+          </div>
+          <ul class="hero-points">
+            <li><span lang="sw">Kiswahili na Kiingereza</span><span lang="en">Swahili and English</span></li>
+            <li><span lang="sw">Inafanya kazi hata mtandao ukikatika</span><span lang="en">Keeps working offline</span></li>
+            <li><span lang="sw">Risiti za printer</span><span lang="en">Printed receipts</span></li>
+          </ul>
+        </div>
+        <div class="hero-visual">
+          <div class="window hero-window">
+            <div class="window-bar"><i></i><i></i><i></i><span>pharmspecio.web.app</span></div>
+            <img src="/assets/screens/dashboard.png" width="1024" height="473" alt="PharmSpecio dashboard showing stock items, low stock, today's sales and stock health">
+          </div>
+          <div class="float-card card-a" aria-hidden="true">
+            <span class="dot ok"></span>
+            <div>
+              <small><span lang="sw">Afya ya stock</span><span lang="en">Stock health</span></small>
+              <strong>98%</strong>
+            </div>
+          </div>
+          <div class="float-card card-b" aria-hidden="true">
+            <span class="dot warn"></span>
+            <div>
+              <small><span lang="sw">Tahadhari ya expiry</span><span lang="en">Expiry alerts</span></small>
+              <strong><span lang="sw">Kabla hazijaisha</span><span lang="en">Before it's too late</span></strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="strip">
+      <div class="wrap strip-grid">
+        <div><strong>3</strong><span lang="sw">Vifaa: Windows, Android, Web</span><span lang="en">Platforms: Windows, Android, Web</span></div>
+        <div><strong>4</strong><span lang="sw">Nafasi: Admin, Pharmacist, Cashier, Storekeeper</span><span lang="en">Roles: Admin, Pharmacist, Cashier, Storekeeper</span></div>
+        <div><strong>7</strong><span lang="sw">Siku za kujaribu bure</span><span lang="en">Free trial days</span></div>
+        <div><strong>24/7</strong><span lang="sw">Data yako iko salama kwenye cloud</span><span lang="en">Your data safe in the cloud</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="eyebrow"><span lang="sw">Kila kitu cha duka</span><span lang="en">Everything your shop needs</span></p>
+          <h2><span lang="sw">Mfumo mmoja, kazi zote za duka la dawa</span><span lang="en">One system for the whole pharmacy</span></h2>
+          <p class="sub"><span lang="sw">Kuanzia dawa inapoingia dukani mpaka inapouzwa — PharmSpecio inakumbuka kila hatua.</span><span lang="en">From the moment stock arrives until it is sold, PharmSpecio keeps track of every step.</span></p>
+        </header>
+        <div class="features">
+          <article class="feature">
+            <div class="ico">🧾</div>
+            <h3><span lang="sw">Mauzo ya haraka (POS)</span><span lang="en">Fast point of sale</span></h3>
+            <p><span lang="sw">Tafuta dawa, ongeza kwenye kikapu, weka punguzo na uchapishe risiti kwa sekunde chache. Cash, M-Pesa au mkopo.</span><span lang="en">Search, add to cart, apply discounts and print a receipt in seconds. Cash, mobile money or credit.</span></p>
+          </article>
+          <article class="feature">
+            <div class="ico">💊</div>
+            <h3><span lang="sw">Stock na batches</span><span lang="en">Stock and batches</span></h3>
+            <p><span lang="sw">Kila dawa na batch yake, bei ya kununua na kuuza. Pata tahadhari stock ikifika kiwango cha kuagiza.</span><span lang="en">Every medicine with its batches, buying and selling price. Get alerts when stock reaches the reorder level.</span></p>
+          </article>
+          <article class="feature">
+            <div class="ico">⏳</div>
+            <h3><span lang="sw">Ufuatiliaji wa expiry</span><span lang="en">Expiry tracking</span></h3>
+            <p><span lang="sw">Ona dawa zinazokaribia kuisha muda mapema, uziuze kwanza au uzirudishe — punguza hasara.</span><span lang="en">See medicines close to expiry early so you can sell or return them first and cut losses.</span></p>
+          </article>
+          <article class="feature">
+            <div class="ico">🚚</div>
+            <h3><span lang="sw">Manunuzi na wasambazaji</span><span lang="en">Purchases and suppliers</span></h3>
+            <p><span lang="sw">Rekodi oda, pokea mzigo na stock ijiongeze yenyewe. Jua unadaiwa na nani na kiasi gani.</span><span lang="en">Record orders, receive deliveries and stock updates itself. Know what you owe each supplier.</span></p>
+          </article>
+          <article class="feature">
+            <div class="ico">👥</div>
+            <h3><span lang="sw">Wafanyakazi na ruhusa</span><span lang="en">Staff and permissions</span></h3>
+            <p><span lang="sw">Kila mfanyakazi ana login yake. Wewe unaamua nani auze, nani abadilishe bei, nani aone ripoti.</span><span lang="en">Each staff member gets their own login. You decide who sells, who edits prices and who sees reports.</span></p>
+          </article>
+          <article class="feature">
+            <div class="ico">📊</div>
+            <h3><span lang="sw">Ripoti na faida</span><span lang="en">Reports and profit</span></h3>
+            <p><span lang="sw">Mauzo, manunuzi, matumizi na faida kwa siku, wiki au mwezi. Toa ripoti kama Excel au PDF.</span><span lang="en">Sales, purchases, expenses and profit by day, week or month. Export to Excel or PDF.</span></p>
+          </article>
+          <article class="feature">
+            <div class="ico">📶</div>
+            <h3><span lang="sw">Hufanya kazi bila mtandao</span><span lang="en">Works offline</span></h3>
+            <p><span lang="sw">Mtandao ukikatika, endelea kuuza. Taarifa zinajituma zenyewe mtandao ukirudi.</span><span lang="en">If the internet drops, keep selling. Everything syncs automatically when you are back online.</span></p>
+          </article>
+          <article class="feature">
+            <div class="ico">🤖</div>
+            <h3><span lang="sw">Msaidizi wa AI</span><span lang="en">AI assistant</span></h3>
+            <p><span lang="sw">Uliza kwa Kiswahili: "Panadol imebaki ngapi?" au "Mauzo ya leo ni kiasi gani?" — upate jibu papo hapo.</span><span lang="en">Ask "How much Panadol is left?" or "What are today's sales?" and get an answer right away.</span></p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="screens">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="eyebrow"><span lang="sw">Ndani ya mfumo</span><span lang="en">Inside the app</span></p>
+          <h2><span lang="sw">Rahisi kutumia, hata kwa mara ya kwanza</span><span lang="en">Easy to use from day one</span></h2>
+        </header>
+        <div class="shots">
+          <figure class="shot shot-main">
+            <a class="window" href="/assets/screens/dashboard.png" target="_blank" rel="noopener">
+              <div class="window-bar"><i></i><i></i><i></i><span><span lang="sw">Muhtasari</span><span lang="en">Overview</span></span></div>
+              <img src="/assets/screens/dashboard.png" width="1024" height="473" loading="lazy" alt="PharmSpecio overview: stock items, low stock, today's sales, expired stock, weekly revenue and stock health">
+            </a>
+            <figcaption>
+              <strong><span lang="sw">Muhtasari wa duka</span><span lang="en">Shop overview</span></strong>
+              <span lang="sw">Stock, dawa zinazokwisha, mauzo ya leo, dawa zilizoisha muda na afya ya stock — kwa mtazamo mmoja.</span>
+              <span lang="en">Stock, low stock, today's sales, expired items and stock health — at a glance.</span>
+            </figcaption>
+          </figure>
+          <figure class="shot">
+            <a class="window" href="/assets/screens/sales.png" target="_blank" rel="noopener">
+              <div class="window-bar"><i></i><i></i><i></i><span><span lang="sw">Mauzo</span><span lang="en">Sales</span></span></div>
+              <img src="/assets/screens/sales.png" width="1024" height="470" loading="lazy" alt="PharmSpecio sales and point of sale screen with medicine search and current sale cart">
+            </a>
+            <figcaption>
+              <strong><span lang="sw">Mauzo na POS</span><span lang="en">Sales and POS</span></strong>
+              <span lang="sw">Tafuta dawa, ongeza kwenye kikapu, kamilisha mauzo. Dawa inayokaribia expiry inauzwa kwanza.</span>
+              <span lang="en">Search, add to cart, complete the sale. The nearest expiry is sold first.</span>
+            </figcaption>
+          </figure>
+          <figure class="shot">
+            <a class="window" href="/assets/screens/reports.png" target="_blank" rel="noopener">
+              <div class="window-bar"><i></i><i></i><i></i><span><span lang="sw">Ripoti</span><span lang="en">Reports</span></span></div>
+              <img src="/assets/screens/reports.png" width="1024" height="469" loading="lazy" alt="PharmSpecio reports and insights with revenue, purchases, gross profit and stock units">
+            </a>
+            <figcaption>
+              <strong><span lang="sw">Ripoti na faida</span><span lang="en">Reports and insights</span></strong>
+              <span lang="sw">Mapato, manunuzi na faida kwa kipindi chochote. Chapisha au pakua.</span>
+              <span lang="en">Revenue, purchases and gross profit for any period. Print, download or export.</span>
+            </figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="eyebrow"><span lang="sw">Anza leo</span><span lang="en">Get started today</span></p>
+          <h2><span lang="sw">Hatua tatu tu</span><span lang="en">Just three steps</span></h2>
+        </header>
+        <div>
+          <ol class="steps">
+            <li>
+              <h3><span lang="sw">Tuma ujumbe WhatsApp</span><span lang="en">Message us on WhatsApp</span></h3>
+              <p><span lang="sw">Tunakufungulia duka lako na akaunti ya admin. Utapata email yenye login na nenosiri la muda.</span><span lang="en">We open your shop and admin account. You receive an email with your login and a temporary password.</span></p>
+            </li>
+            <li>
+              <h3><span lang="sw">Weka dawa zako</span><span lang="en">Add your medicines</span></h3>
+              <p><span lang="sw">Ingiza moja moja au pakia orodha nzima kwa Excel mara moja. Ongeza wafanyakazi wako.</span><span lang="en">Add them one by one or upload your whole list from Excel at once. Add your staff.</span></p>
+            </li>
+            <li>
+              <h3><span lang="sw">Anza kuuza</span><span lang="en">Start selling</span></h3>
+              <p><span lang="sw">Tumia kompyuta, simu au kivinjari. Siku 7 za kwanza ni bure, kisha chagua kifurushi kinachokufaa.</span><span lang="en">Use a computer, phone or browser. The first 7 days are free, then pick the plan that suits you.</span></p>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta" id="contact">
+      <div class="wrap cta-inner">
+        <div>
+          <h2><span lang="sw">Uko tayari kupanga duka lako?</span><span lang="en">Ready to organise your pharmacy?</span></h2>
+          <p><span lang="sw">Tuandikie WhatsApp — tutakujibu haraka na kukusaidia kuanza.</span><span lang="en">Message us on WhatsApp — we reply quickly and help you get started.</span></p>
+          <p class="phone">📞 0624 071 543</p>
+        </div>
+        <div class="cta-actions">
+          <a class="btn btn-gold btn-lg" href="https://wa.me/255624071543?text=Habari%2C%20nataka%20kujua%20zaidi%20kuhusu%20PharmSpecio." target="_blank" rel="noopener">
+            <span lang="sw">Chat WhatsApp</span><span lang="en">Chat on WhatsApp</span>
+          </a>
+          <a class="btn btn-outline-light btn-lg" href="tel:+255624071543">
+            <span lang="sw">Piga simu</span><span lang="en">Call us</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <div class="brand">
+        <img src="/assets/logo.png" alt="" width="32" height="32">
+        <span>Pharm<b>Specio</b></span>
+      </div>
+      <p>© <span data-year>2026</span> PharmSpecio · <span lang="sw">Imetengenezwa Tanzania</span><span lang="en">Made in Tanzania</span></p>
+      <a href="/app/"><span lang="sw">Ingia kwenye mfumo →</span><span lang="en">Sign in to the system →</span></a>
+    </div>
+  </footer>
+
+  <a class="wa-float" href="https://wa.me/255624071543" target="_blank" rel="noopener" aria-label="WhatsApp 0624071543">
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.7 11.7 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3Z"/></svg>
+  </a>
+
+  <script>
+    document.querySelectorAll('[data-toggle-lang]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var root = document.documentElement;
+        var next = root.getAttribute('data-lang') === 'sw' ? 'en' : 'sw';
+        root.setAttribute('data-lang', next);
+        root.setAttribute('lang', next);
+        try { localStorage.setItem('ps_lang', next); } catch (e) {}
+      });
+    });
+    document.querySelectorAll('[data-year]').forEach(function (el) { el.textContent = new Date().getFullYear(); });
+  </script>
+</body>
+</html>

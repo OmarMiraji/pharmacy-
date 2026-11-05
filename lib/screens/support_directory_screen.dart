@@ -258,7 +258,13 @@ class _ShopCard extends StatelessWidget {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(user.displayName.isEmpty ? user.email : user.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text('${user.email}  •  ${user.role}  •  ${user.isActive ? S.t('Active', 'Hai') : S.t('Disabled', 'Imefungwa')}'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${user.email}  •  ${user.role}  •  ${user.isActive ? S.t('Active', 'Hai') : S.t('Disabled', 'Imefungwa')}'),
+                          PasswordStatusChip(user: user),
+                        ],
+                      ),
                       trailing: Wrap(
                         spacing: 0,
                         children: [
@@ -393,7 +399,13 @@ class _UsersPane extends StatelessWidget {
                                     : S.t('Unknown shop', 'Duka halijulikani'));
                             return ListTile(
                               title: Text(user.displayName.isEmpty ? user.email : user.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                              subtitle: Text('${user.email}  •  ${user.role}  •  $shopName  •  ${user.isActive ? S.t('Active', 'Hai') : S.t('Disabled', 'Imefungwa')}'),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${user.email}  •  ${user.role}  •  $shopName  •  ${user.isActive ? S.t('Active', 'Hai') : S.t('Disabled', 'Imefungwa')}'),
+                                  PasswordStatusChip(user: user),
+                                ],
+                              ),
                               trailing: Wrap(
                                 children: [
                                   IconButton(

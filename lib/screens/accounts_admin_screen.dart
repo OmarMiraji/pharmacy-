@@ -61,6 +61,7 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
         ownerDisplayName: _adminName.text.trim(),
         ownerPassword: _password.text,
       );
+      await _users.markTemporaryPassword(userId: result.adminUid, password: _password.text);
       if (!mounted) return;
       _shopName.clear();
       _adminName.clear();
@@ -234,7 +235,13 @@ class _AccountsAdminScreenState extends State<AccountsAdminScreen> {
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text('${user.email}  •  ${user.role}  •  uid ${user.id}'),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${user.email}  •  ${user.role}  •  uid ${user.id}'),
+                                PasswordStatusChip(user: user),
+                              ],
+                            ),
                             trailing: IconButton(
                               tooltip: 'Set password',
                               onPressed: () => showManagedPasswordDialog(context, user),

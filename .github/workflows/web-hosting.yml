@@ -27,7 +27,15 @@ jobs:
         run: flutter pub get
 
       - name: Build web release
-        run: flutter build web --release
+        run: flutter build web --release --base-href /app/
+
+      # Landing page at /, the Flutter app at /app/ (web only; Windows and Android are unaffected).
+      - name: Assemble site
+        run: |
+          rm -rf build/site
+          mkdir -p build/site
+          cp -r landing/. build/site/
+          cp -r build/web build/site/app
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

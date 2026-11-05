@@ -177,7 +177,23 @@ class UserManagementService {
       phone: phone,
       employeeCode: employeeCode,
     );
+    await markTemporaryPassword(userId: uid, password: password);
     return uid;
+  }
+
+  /// Records that [password] was chosen by an admin, so the owner must replace it at next sign-in.
+  /// Best effort: the login already works even if this write is rejected.
+  Future<void> markTemporaryPassword({required String userId, required String password}) async {
+    final id = userId.trim();
+    if (id.isEmpty) return;
+    try {
+      await _firestore.collection(FirestoreCollections.users).doc(id).set({
+        'mustChangePassword': true,
+        'tempPassword': password.trim(),
+        'tempPasswordSetAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
   }
 
   Future<void> createProfile({
@@ -275,5 +291,6 @@ class UserManagementService {
       final text = '$error'.replaceFirst('Exception: ', '').replaceFirst('Bad state: ', '').trim();
       throw StateError(text.isEmpty ? 'Could not set that login password.' : text);
     }
+    await markTemporaryPassword(userId: userId, password: next);
   }
 }

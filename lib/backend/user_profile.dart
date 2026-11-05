@@ -13,6 +13,9 @@ class UserProfile {
     required this.isActive,
     this.phone,
     this.pharmacyId,
+    this.mustChangePassword = false,
+    this.tempPassword,
+    this.passwordChangedAt,
   });
 
   final String id;
@@ -24,6 +27,26 @@ class UserProfile {
   final bool isActive;
   final String? phone;
   final String? pharmacyId;
+
+  /// Set when someone else gave this login a temporary password; cleared once they pick their own.
+  final bool mustChangePassword;
+  final String? tempPassword;
+  final DateTime? passwordChangedAt;
+
+  UserProfile withPasswordState(UserProfile source) => UserProfile(
+        id: id,
+        employeeCode: employeeCode,
+        displayName: displayName,
+        email: email,
+        role: role,
+        permissions: permissions,
+        isActive: isActive,
+        phone: phone,
+        pharmacyId: pharmacyId,
+        mustChangePassword: source.mustChangePassword,
+        tempPassword: source.tempPassword,
+        passwordChangedAt: source.passwordChangedAt,
+      );
 
   bool get isSuperAdmin => role == 'super_admin';
 
@@ -67,6 +90,9 @@ class UserProfile {
         if (raw is String && raw.trim().isNotEmpty) return raw.trim();
         return null;
       }(),
+      mustChangePassword: data['mustChangePassword'] == true,
+      tempPassword: _asString(data['tempPassword']).trim().isEmpty ? null : _asString(data['tempPassword']).trim(),
+      passwordChangedAt: data['passwordChangedAt'] is Timestamp ? (data['passwordChangedAt'] as Timestamp).toDate() : null,
     );
   }
 

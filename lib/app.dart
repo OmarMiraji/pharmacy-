@@ -145,7 +145,8 @@ class _OpeningShopScreen extends StatelessWidget {
           backgroundColor: PhyimacyBrand.cream,
           body: Center(
             child: Container(
-              width: 420,
+              constraints: const BoxConstraints(maxWidth: 420),
+              margin: const EdgeInsets.symmetric(horizontal: 16),
               padding: const EdgeInsets.fromLTRB(36, 40, 36, 36),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -251,6 +252,7 @@ class ProfileLoader extends StatefulWidget {
 
 class _ProfileLoaderState extends State<ProfileLoader> {
   late Future<_LoadedWorkspace> _workspaceFuture;
+  var _passwordReplaced = false;
 
   @override
   void initState() {
@@ -262,6 +264,7 @@ class _ProfileLoaderState extends State<ProfileLoader> {
   void didUpdateWidget(covariant ProfileLoader oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userId != widget.userId) {
+      _passwordReplaced = false;
       _workspaceFuture = _loadWorkspace();
     }
   }
@@ -350,8 +353,15 @@ class _ProfileLoaderState extends State<ProfileLoader> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final onPhone =
-            !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+        if (profile.mustChangePassword && !_passwordReplaced) {
+          return ForcePasswordChangeScreen(
+            profile: profile,
+            onChanged: () => setState(() => _passwordReplaced = true),
+          );
+        }
+        final onPhone = kIsWeb
+            ? MediaQuery.sizeOf(context).width < 760
+            : defaultTargetPlatform == TargetPlatform.android;
         if (profile.isSuperAdmin) {
           if (onPhone) {
             return MobileShell(
@@ -5317,15 +5327,25 @@ class TeamAccessScreen extends StatelessWidget {
                     user.displayName,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  subtitle: Text(
-                    [
-                      user.email,
-                      if ((user.phone ?? '').trim().isNotEmpty) user.phone,
-                      user.role,
-                      user.isActive ? 'Active' : 'Inactive',
-                      if ((user.pharmacyId ?? '').trim().isNotEmpty)
-                        'Shop linked',
-                    ].join('  |  '),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        [
+                          user.email,
+                          if ((user.phone ?? '').trim().isNotEmpty) user.phone,
+                          user.role,
+                          user.isActive ? 'Active' : 'Inactive',
+                          if ((user.pharmacyId ?? '').trim().isNotEmpty)
+                            'Shop linked',
+                        ].join('  |  '),
+                      ),
+                      if ((canManageSuperAdmin || isShopAdmin) && user.id != profile?.id)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: PasswordStatusChip(user: user),
+                        ),
+                    ],
                   ),
                   trailing: Wrap(
                     spacing: 4,
