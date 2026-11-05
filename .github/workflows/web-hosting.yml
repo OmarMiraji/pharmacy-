@@ -6,6 +6,13 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+    paths:
+      - 'landing/**'
+      - 'firebase.json'
+      - 'hosting-redirect/**'
+      - '.github/workflows/web-hosting.yml'
   workflow_dispatch:
 
 permissions:

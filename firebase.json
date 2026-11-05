@@ -9,15 +9,18 @@
   "hosting": [
   {
     "site": "phyimacy-management-system",
-    "public": "build/site",
+    "public": "hosting-redirect",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "redirects": [{ "source": "/:path*", "destination": "https://pharmspecio.web.app/:path*", "type": 301 }]
+    "redirects": [
+      { "source": "/", "destination": "https://pharmspecio.web.app/", "type": 301 },
+      { "regex": "^/(.*)$", "destination": "https://pharmspecio.web.app/:1", "type": 301 }
+    ]
   },
   {
     "site": "pharmspecio",
     "public": "build/site",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "redirects": [{ "source": "/app", "destination": "/app/", "type": 301 }],
+    "redirects": [{ "regex": "^/app$", "destination": "/app/", "type": 301 }],
     "rewrites": [
       { "source": "/app/**", "destination": "/app/index.html" },
       { "source": "**", "destination": "/index.html" }
