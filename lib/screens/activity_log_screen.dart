@@ -109,6 +109,11 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
       ActivityAction.stockSet => (S.t('Changed stock count', 'Amebadilisha idadi ya stock'), Icons.inventory_2_outlined, amber),
       ActivityAction.stockWrittenOff => (S.t('Removed expired stock', 'Ameondoa stock iliyoisha muda'), Icons.event_busy_rounded, amber),
       ActivityAction.saleVoided => (S.t('Cancelled a sale', 'Ameghairi mauzo'), Icons.receipt_long_outlined, red),
+      ActivityAction.staffKicked => (S.t('Signed someone out everywhere', 'Amemtoa mtu kwenye vifaa vyote'), Icons.logout_rounded, amber),
+      ActivityAction.staffKickedDisabled => (S.t('Signed out and disabled a login', 'Amemtoa na kufunga login'), Icons.block_rounded, red),
+      ActivityAction.maintenanceOn => (S.t('Turned maintenance mode ON', 'Amewasha maintenance mode'), Icons.construction_rounded, red),
+      ActivityAction.maintenanceOff => (S.t('Turned maintenance mode off', 'Amezima maintenance mode'), Icons.construction_rounded, teal),
+      ActivityAction.minimumVersionSet => (S.t('Changed required app version', 'Amebadilisha toleo la lazima'), Icons.system_update_alt_rounded, amber),
       _ => (action, Icons.history_rounded, teal),
     };
   }

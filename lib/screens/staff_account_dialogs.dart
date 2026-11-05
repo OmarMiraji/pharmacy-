@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../backend/auth_account_service.dart';
 import '../backend/permissions.dart';
 import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
@@ -605,6 +606,84 @@ class ProtectedSuperAdminBadge extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Ends every session of [user] (all devices) and optionally disables the login.
+class ForceSignOutButton extends StatefulWidget {
+  const ForceSignOutButton({required this.user, this.onDone, this.compact = false, super.key});
+
+  final UserProfile user;
+  final VoidCallback? onDone;
+  final bool compact;
+
+  @override
+  State<ForceSignOutButton> createState() => _ForceSignOutButtonState();
+}
+
+class _ForceSignOutButtonState extends State<ForceSignOutButton> {
+  var _busy = false;
+
+  Future<void> _start() async {
+    final user = widget.user;
+    if (user.isSuperAdmin) return;
+    final name = user.displayName.isEmpty ? user.email : user.displayName;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(S.t('Sign $name out everywhere?', 'Mtoe $name kwenye vifaa vyote?')),
+        content: Text(S.t(
+          'Every device using this login is signed out right away. Choose "Sign out and disable" if the password may be stolen or the person has left.',
+          'Kila kifaa kinachotumia login hii kitatolewa papo hapo. Chagua "Toa na ufunge" kama nenosiri limeibiwa au mtu ameondoka kazini.',
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(S.t('Cancel', 'Ghairi'))),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, 'kick'),
+            child: Text(S.t('Sign out only', 'Toa tu')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xffb42318)),
+            onPressed: () => Navigator.pop(dialogContext, 'disable'),
+            child: Text(S.t('Sign out and disable', 'Toa na ufunge')),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await AuthAccountService().forceSignOut(uid: user.id, disable: choice == 'disable');
+      if (!mounted) return;
+      showAppNotice(
+        context,
+        choice == 'disable'
+            ? S.t('$name was signed out everywhere and disabled.', '$name ametolewa kwenye vifaa vyote na amefungwa.')
+            : S.t('$name was signed out everywhere.', '$name ametolewa kwenye vifaa vyote.'),
+      );
+      widget.onDone?.call();
+    } catch (error) {
+      if (mounted) showAppNotice(context, friendlyActionError(error), kind: AppNoticeKind.error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.user.isSuperAdmin) return const SizedBox.shrink();
+    final label = Text(S.t('Sign out everywhere', 'Toa kila mahali'));
+    final icon = _busy
+        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+        : const Icon(Icons.logout_rounded, size: 18);
+    if (widget.compact) {
+      return IconButton(
+        tooltip: S.t('Sign out everywhere', 'Toa kila mahali'),
+        onPressed: _busy ? null : _start,
+        icon: icon,
+      );
+    }
+    return OutlinedButton.icon(onPressed: _busy ? null : _start, icon: icon, label: label);
   }
 }
 

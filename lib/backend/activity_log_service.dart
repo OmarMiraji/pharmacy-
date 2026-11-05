@@ -176,4 +176,9 @@ abstract final class ActivityAction {
   static const stockSet = 'stock.set';
   static const stockWrittenOff = 'stock.written_off';
   static const saleVoided = 'sale.voided';
+  static const staffKicked = 'staff.kicked';
+  static const staffKickedDisabled = 'staff.kicked_disabled';
+  static const maintenanceOn = 'system.maintenance_on';
+  static const maintenanceOff = 'system.maintenance_off';
+  static const minimumVersionSet = 'system.minimum_version';
 }

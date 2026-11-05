@@ -15,6 +15,7 @@ import '../l10n/app_locale.dart';
 import '../widgets/language_toggle.dart';
 import '../backend/security_alert_service.dart';
 import 'activity_log_screen.dart';
+import 'emergency_tools_screen.dart';
 import 'security_alerts_screen.dart';
 import 'announcements_admin_screen.dart';
 import 'login_logs_screen.dart';
@@ -112,6 +113,7 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
         ]),
         _NavSection('SYSTEM', [
           _NavDest('alerts', S.t('Security alerts', 'Tahadhari'), Icons.notification_important_outlined),
+          _NavDest('emergency', S.t('Emergency tools', 'Zana za dharura'), Icons.emergency_outlined),
           _NavDest('support', S.t('Support data', 'Data ya msaada'), Icons.storage_rounded),
           _NavDest('activity', S.t('Security activity', 'Shughuli za usalama'), Icons.policy_outlined),
           _NavDest('audit', S.t('Audit logs', 'Audit'), Icons.receipt_long_rounded),
@@ -313,6 +315,8 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
         return const SingleChildScrollView(child: ActivityLogScreen());
       case 'alerts':
         return const SecurityAlertsScreen();
+      case 'emergency':
+        return const EmergencyToolsScreen();
       case 'logins':
         return LoginLogsScreen(excludeActorUid: widget.profile.id, canDelete: true);
       case 'security':

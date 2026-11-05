@@ -44,7 +44,9 @@ import 'platform/file_saver.dart';
 import 'theme/brand.dart';
 import 'widgets/app_notice.dart';
 import 'widgets/increase_stock_dialog.dart';
+import 'backend/system_control_service.dart';
 import 'screens/activity_log_screen.dart';
+import 'screens/system_gate_screens.dart';
 import 'screens/subscription_admin_screen.dart';
 import 'screens/receive_purchase_dialog.dart';
 import 'screens/super_admin_home.dart';
@@ -254,11 +256,54 @@ class ProfileLoader extends StatefulWidget {
 class _ProfileLoaderState extends State<ProfileLoader> {
   late Future<_LoadedWorkspace> _workspaceFuture;
   var _passwordReplaced = false;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _selfWatch;
+  int? _sessionEpoch;
 
   @override
   void initState() {
     super.initState();
+    SystemControlService.instance.start();
     _workspaceFuture = _loadWorkspace();
+  }
+
+  @override
+  void dispose() {
+    _selfWatch?.cancel();
+    SystemControlService.instance.stop();
+    super.dispose();
+  }
+
+  /// Signs this device out as soon as an admin ends the login's sessions, disables it, or deletes it.
+  void _watchSelf(String uid) {
+    _selfWatch?.cancel();
+    _sessionEpoch = null;
+    _selfWatch = FirebaseFirestore.instance
+        .collection(FirestoreCollections.users)
+        .doc(uid)
+        .snapshots()
+        .listen((snap) {
+      if (!snap.exists) {
+        if (!snap.metadata.isFromCache) {
+          _kick('This login was removed. Contact your administrator.');
+        }
+        return;
+      }
+      final data = snap.data() ?? const <String, dynamic>{};
+      final epoch = (data['sessionEpoch'] as num?)?.toInt() ?? 0;
+      _sessionEpoch ??= epoch;
+      if (data['isActive'] == false) {
+        _kick('This account is disabled. Contact your administrator.');
+      } else if (epoch > _sessionEpoch!) {
+        _kick('You were signed out by your administrator. Sign in again to continue.');
+      }
+    }, onError: (_) {});
+  }
+
+  Future<void> _kick(String message) async {
+    await _selfWatch?.cancel();
+    _selfWatch = null;
+    AuthService.workspaceError = message;
+    if (widget.authService.currentUser != null) await widget.authService.signOut();
   }
 
   @override
@@ -294,6 +339,7 @@ class _ProfileLoaderState extends State<ProfileLoader> {
             onTimeout: () => throw TimeoutException('timed-out'),
           );
       AuthService.workspaceError = null;
+      _watchSelf(profile.id);
       try {
         await LoginLogService().recordLogin(profile);
       } catch (_) {}
@@ -360,6 +406,28 @@ class _ProfileLoaderState extends State<ProfileLoader> {
             onChanged: () => setState(() => _passwordReplaced = true),
           );
         }
+        if (profile.isSuperAdmin) return _home(context, workspace, profile);
+        final control = SystemControlService.instance;
+        return ValueListenableBuilder<int?>(
+          valueListenable: control.installedBuild,
+          builder: (context, _, _) => ValueListenableBuilder<SystemControl>(
+            valueListenable: control.config,
+            builder: (context, config, _) {
+              if (config.maintenance) {
+                return MaintenanceScreen(control: config, authService: widget.authService);
+              }
+              if (control.needsUpdate(config)) {
+                return ForceUpdateScreen(control: config, profile: profile, authService: widget.authService);
+              }
+              return _home(context, workspace, profile);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _home(BuildContext context, _LoadedWorkspace? workspace, UserProfile profile) {
         final onPhone = kIsWeb
             ? MediaQuery.sizeOf(context).width < 760
             : defaultTargetPlatform == TargetPlatform.android;
@@ -408,8 +476,6 @@ class _ProfileLoaderState extends State<ProfileLoader> {
           readOnly: workspace?.readOnly == true,
           onLicenseChanged: _reloadWorkspace,
         );
-      },
-    );
   }
 }
 
@@ -5399,6 +5465,12 @@ class TeamAccessScreen extends StatelessWidget {
                             color: Color(0xff0f766e),
                           ),
                         ),
+                      if ((canManageSuperAdmin && user.id != profile?.id) ||
+                          (isShopAdmin &&
+                              user.id != profile?.id &&
+                              user.role != 'admin' &&
+                              user.role != 'super_admin'))
+                        ForceSignOutButton(user: user, compact: true),
                       if ((canManageSuperAdmin && user.id != profile?.id) ||
                           (isShopAdmin &&
                               user.id != profile?.id &&

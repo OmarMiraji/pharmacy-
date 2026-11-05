@@ -746,6 +746,11 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    match /system_control/{docId} {
+      allow read: if signedIn();
+      allow write: if isSuperAdmin();
+    }
+
     match /auth_index/{id} {
       allow read: if isSuperAdmin() || firestoreRole() == 'admin';
       allow write: if isSuperAdmin();

@@ -120,6 +120,15 @@ class AuthAccountService {
     }
   }
 
+  Future<void> forceSignOut({required String uid, bool disable = false}) async {
+    if (uid.trim().isEmpty) throw ArgumentError('User is required.');
+    try {
+      await _callFunction('forceSignOut', {'uid': uid.trim(), 'disable': disable});
+    } on _CallableError catch (error) {
+      throw StateError(error.message);
+    }
+  }
+
   Future<String> _createViaIdentity(String email, String password) async {
     try {
       final json = await _identity('accounts:signUp', {

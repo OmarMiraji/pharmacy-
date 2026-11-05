@@ -281,6 +281,7 @@ class _ShopCard extends StatelessWidget {
                               onPressed: () => showManagedPasswordDialog(context, user),
                               icon: const Icon(Icons.password_rounded, color: Color(0xff0f766e)),
                             ),
+                            ForceSignOutButton(user: user, compact: true),
                             IconButton(
                               tooltip: S.t('Delete', 'Futa'),
                               onPressed: () => confirmDeleteStaffProfile(context, users, user),
@@ -425,6 +426,7 @@ class _UsersPane extends StatelessWidget {
                                       onPressed: () => showManagedPasswordDialog(context, user),
                                       icon: const Icon(Icons.password_rounded, color: Color(0xff0f766e)),
                                     ),
+                                    ForceSignOutButton(user: user, compact: true),
                                     IconButton(
                                       tooltip: user.isActive ? S.t('Disable', 'Funga') : S.t('Enable', 'Fungua'),
                                       onPressed: () => users.updateAccess(

@@ -269,6 +269,64 @@ exports.onUserProfileDeleted = onDocumentDeleted(
     },
 );
 
+// Ends every session of a login: refresh tokens are revoked and the open app sees sessionEpoch change.
+exports.forceSignOut = onCall({region: "us-central1"}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in first.");
+  }
+  const uid = String((request.data && request.data.uid) || "").trim();
+  const disable = request.data && request.data.disable === true;
+  if (!uid) throw new HttpsError("invalid-argument", "User is required.");
+  if (uid === request.auth.uid) {
+    throw new HttpsError("failed-precondition", "Use Sign out to leave your own session.");
+  }
+  const caller = await loadCaller(request.auth.uid);
+  const callerRole = String(caller.role || "").trim().toLowerCase();
+  const isSuper = callerIsSuper(caller, request.auth.token);
+  if (!isSuper && callerRole !== "admin") {
+    throw new HttpsError("permission-denied", "Only an admin can sign someone out.");
+  }
+  if (await isSuperAdminUid(uid)) {
+    throw new HttpsError("permission-denied", PROTECTED_MESSAGE);
+  }
+  const db = admin.firestore();
+  const ref = db.collection("users").doc(uid);
+  const targetSnap = await ref.get();
+  if (!targetSnap.exists) throw new HttpsError("not-found", "That login profile was not found.");
+  if (!isSuper) await assertShopAdminMayManage(caller, uid, "");
+  const target = targetSnap.data() || {};
+  try {
+    await admin.auth().revokeRefreshTokens(uid);
+    if (disable) await admin.auth().updateUser(uid, {disabled: true});
+  } catch (error) {
+    if (!error || error.code !== "auth/user-not-found") {
+      throw new HttpsError("internal", "Could not end that login's sessions.");
+    }
+  }
+  await ref.set({
+    sessionEpoch: admin.firestore.FieldValue.increment(1),
+    sessionsRevokedAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...(disable ? {isActive: false} : {}),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  await db.collection("activity_logs").add({
+    action: disable ? "staff.kicked_disabled" : "staff.kicked",
+    level: "security",
+    actorUid: request.auth.uid,
+    actorEmail: String(caller.email || request.auth.token.email || "").toLowerCase(),
+    actorName: String(caller.displayName || caller.email || ""),
+    actorRole: isSuper ? "super_admin" : callerRole,
+    pharmacyId: String(target.pharmacyId || ""),
+    pharmacyName: "",
+    target: `${target.displayName || ""} <${target.email || ""}>`,
+    detail: disable ? "Signed out everywhere and disabled" : "Signed out everywhere",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + 180 * 86400000),
+  });
+  return {ok: true};
+});
+
 const mailTriggers = require("./mail/triggers");
 exports.onUserCreatedEmail = mailTriggers.onUserCreatedEmail;
 exports.onPharmacyUpdatedEmail = mailTriggers.onPharmacyUpdatedEmail;
