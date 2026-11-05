@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -41,6 +40,7 @@ import 'backend/expiry_stock.dart';
 import 'backend/selling_units.dart';
 import 'backend/shop_alerts.dart';
 import 'l10n/app_locale.dart';
+import 'platform/file_saver.dart';
 import 'theme/brand.dart';
 import 'widgets/app_notice.dart';
 import 'widgets/increase_stock_dialog.dart';
@@ -453,12 +453,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted || notice == null) return;
       showAppNotice(context, notice, kind: AppNoticeKind.warning);
     });
-    AppUpdateService()
-        .check()
-        .then((value) {
-          if (mounted) setState(() => _appUpdate = value);
-        })
-        .catchError((_) {});
+    if (!kIsWeb) {
+      AppUpdateService()
+          .check()
+          .then((value) {
+            if (mounted) setState(() => _appUpdate = value);
+          })
+          .catchError((_) {});
+    }
   }
 
   @override
@@ -5470,13 +5472,14 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
   Future<void> _downloadTemplate() async {
     const fileName = 'phyimacy_medicine_import_template.csv';
     final csv = MedicineImportService.generateTemplateCsv();
-    final directory = await getDownloadsDirectory() ?? Directory.systemTemp;
-    final file = File('${directory.path}/$fileName');
-    await file.create(recursive: true);
-    await file.writeAsString(csv);
+    final savedTo = await FileSaver.saveToDownloads(
+      fileName: fileName,
+      bytes: Uint8List.fromList(utf8.encode(csv)),
+      mimeType: 'text/csv',
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Template downloaded to ${file.path}')),
+      SnackBar(content: Text('Template downloaded to $savedTo')),
     );
   }
 
@@ -5494,9 +5497,7 @@ class _MedicineImportScreenState extends State<MedicineImportScreen> {
 
       final file = result.files.first;
       final selectedName = file.name;
-      final rawBytes =
-          file.bytes ??
-          (file.path == null ? null : await File(file.path!).readAsBytes());
+      final rawBytes = await FileSaver.readPicked(file);
       if (rawBytes == null || rawBytes.isEmpty) {
         throw StateError('The selected file was empty.');
       }
@@ -6009,6 +6010,12 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   }
 
   Future<void> _pickWindowsPrinter() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('In the browser, choose the printer in the print window that opens for each receipt.')),
+      );
+      return;
+    }
     final printers = await Printing.listPrinters();
     if (!mounted || printers.isEmpty) {
       return;

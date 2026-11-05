@@ -113,7 +113,7 @@ class AppUpdateService {
     AppRelease? latest = stored;
     const fallbackRepo = 'OmarMiraji/pharmacy-';
     final repo = (stored?.githubRepo ?? '').trim().isEmpty ? fallbackRepo : stored!.githubRepo.trim();
-    if (repo.isNotEmpty) {
+    if (repo.isNotEmpty && !kIsWeb) {
       final github = await fetchGithubLatest(repo);
       if (github != null) {
         latest = github;
@@ -238,7 +238,7 @@ class AppUpdateService {
     required AppRelease release,
     required void Function(double fraction, String label) onProgress,
   }) async {
-    if (!Platform.isWindows) {
+    if (kIsWeb || !Platform.isWindows) {
       throw StateError('In-app update is only available on Windows.');
     }
     final repo = release.githubRepo.trim();

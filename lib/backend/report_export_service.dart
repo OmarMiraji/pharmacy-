@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../platform/file_saver.dart';
 import 'report_service.dart';
 
 class ReportExportService {
@@ -310,15 +309,12 @@ class ReportExportService {
     required String extension,
     required Uint8List bytes,
   }) async {
-    final path = await FilePicker.platform.saveFile(
+    return FileSaver.saveAs(
       dialogTitle: 'Save pharmacy report',
       fileName: fileName,
-      type: FileType.custom,
-      allowedExtensions: [extension],
+      extension: extension,
+      bytes: bytes,
+      mimeType: extension == 'pdf' ? 'application/pdf' : 'text/csv',
     );
-    if (path == null || path.trim().isEmpty) return null;
-    final file = File(path.endsWith('.$extension') ? path : '$path.$extension');
-    await file.writeAsBytes(bytes, flush: true);
-    return file.path;
   }
 }

@@ -92,6 +92,15 @@
       ]
     },
     {
+      "collectionGroup": "medicine_batches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "pharmacyId", "order": "ASCENDING" },
+        { "fieldPath": "quantityOnHand", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "sales",
       "queryScope": "COLLECTION",
       "fields": [

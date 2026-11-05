@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mailer/mailer.dart' as mailer;
 import 'package:mailer/smtp_server.dart';
@@ -8,6 +9,7 @@ class TransactionalEmailService {
   static const _userKey = 'pharmspecio_smtp_user';
   static const _passKey = 'pharmspecio_smtp_pass';
   static const _storage = FlutterSecureStorage();
+  static const webAppUrl = 'https://phyimacy-management-system.web.app';
 
   Future<void> saveSmtp({required String gmail, required String appPassword}) async {
     final user = gmail.trim().toLowerCase();
@@ -91,6 +93,8 @@ class TransactionalEmailService {
   }
 
   Future<String?> send({required String to, required String subject, required String text}) async {
+    // Browsers cannot open SMTP connections.
+    if (kIsWeb) return 'email-not-ready';
     try {
       final smtp = await loadSmtp();
       if (smtp == null) {
@@ -150,6 +154,7 @@ class TransactionalEmailService {
       if (trial) 'You are on a 7-day free trial${until.isEmpty ? '' : ', until $until'}.',
       '',
       'Open the PharmSpecio Windows app and sign in with this email and the password that was set for you.',
+      'You can also sign in from a browser: $webAppUrl',
     ].join('\n');
   }
 
@@ -164,6 +169,7 @@ class TransactionalEmailService {
       'Role: $role',
       '',
       'Sign in on the PharmSpecio Windows app with this email and the password your shop admin gave you.',
+      'You can also sign in from a browser: $webAppUrl',
     ].join('\n');
   }
 }

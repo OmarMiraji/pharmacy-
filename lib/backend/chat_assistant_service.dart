@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 
 import 'assistant_config.dart';
 import 'firestore_collections.dart';
@@ -366,36 +366,30 @@ class ChatAssistantService {
     final uri = Uri.parse(
       'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=${AssistantConfig.geminiKey}',
     );
-    final client = HttpClient();
-    try {
-      final request = await client.postUrl(uri).timeout(const Duration(seconds: 20));
-      request.headers.contentType = ContentType.json;
-      request.add(utf8.encode(body));
-      final response = await request.close().timeout(const Duration(seconds: 45));
-      final text = await response.transform(utf8.decoder).join();
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw StateError('Assistant is busy. Try again.');
-      }
-      final decoded = jsonDecode(text);
-      if (decoded is Map) {
-        final candidates = decoded['candidates'];
-        if (candidates is List && candidates.isNotEmpty) {
-          final content = (candidates.first as Map)['content'];
-          if (content is Map) {
-            final parts = content['parts'];
-            if (parts is List && parts.isNotEmpty) {
-              final part = parts.first;
-              if (part is Map && part['text'] is String) {
-                return (part['text'] as String).trim();
-              }
+    final response = await http
+        .post(uri, headers: {'Content-Type': 'application/json'}, body: body)
+        .timeout(const Duration(seconds: 60));
+    final text = utf8.decode(response.bodyBytes, allowMalformed: true);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('Assistant is busy. Try again.');
+    }
+    final decoded = jsonDecode(text);
+    if (decoded is Map) {
+      final candidates = decoded['candidates'];
+      if (candidates is List && candidates.isNotEmpty) {
+        final content = (candidates.first as Map)['content'];
+        if (content is Map) {
+          final parts = content['parts'];
+          if (parts is List && parts.isNotEmpty) {
+            final part = parts.first;
+            if (part is Map && part['text'] is String) {
+              return (part['text'] as String).trim();
             }
           }
         }
       }
-      throw StateError('Empty assistant reply.');
-    } finally {
-      client.close(force: true);
     }
+    throw StateError('Empty assistant reply.');
   }
 
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _purchasesSince(

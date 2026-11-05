@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
@@ -196,7 +197,7 @@ class ReceiptService {
     }
 
     final previewOnly = settings.paperMode == 'pdf';
-    if (!previewOnly && settings.selectedPrinterUrl.isNotEmpty && context != null) {
+    if (!kIsWeb && !previewOnly && settings.selectedPrinterUrl.isNotEmpty && context != null) {
       final printers = await Printing.listPrinters();
       if (printers.isNotEmpty) {
         final printer = printers.firstWhere(

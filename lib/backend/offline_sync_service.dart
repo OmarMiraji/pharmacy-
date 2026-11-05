@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:path_provider/path_provider.dart';
 
+import '../platform/local_store.dart';
+import '../platform/network_probe.dart';
 import 'medicine_service.dart';
 import 'models.dart';
 import 'permissions.dart';
@@ -336,30 +336,11 @@ class OfflineSyncService extends ChangeNotifier {
     }
   }
 
-  static Future<bool> probeNetwork() async {
-    try {
-      final ipv4 = await InternetAddress.lookup(
-        'firestore.googleapis.com',
-        type: InternetAddressType.IPv4,
-      );
-      if (ipv4.isNotEmpty) {
-        final socket = await Socket.connect(ipv4.first, 443, timeout: const Duration(seconds: 3));
-        socket.destroy();
-        return true;
-      }
-    } catch (_) {}
-    try {
-      final socket = await Socket.connect(InternetAddress('1.1.1.1'), 443, timeout: const Duration(seconds: 2));
-      socket.destroy();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
+  static Future<bool> probeNetwork() => probeNetworkReachable();
 
   static bool isNetworkError(Object error) {
     final text = '$error'.toLowerCase();
-    return error is SocketException ||
+    return isSocketError(error) ||
         error is TimeoutException ||
         text.contains('unavailable') ||
         text.contains('network is unreachable') ||
@@ -859,32 +840,21 @@ class OfflineSyncService extends ChangeNotifier {
     );
   }
 
-  Future<File> _file() async {
-    final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}/phyimacy_offline_sales.enc');
-  }
-
-  Future<File> _legacyFile() async {
-    final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}/phyimacy_offline_sales.json');
-  }
+  static const _salesFile = 'phyimacy_offline_sales.enc';
+  static const _legacySalesFile = 'phyimacy_offline_sales.json';
+  static const _medicinesFile = 'phyimacy_offline_medicines.enc';
 
   Future<void> _load() async {
     try {
-      final file = await _file();
-      final legacy = await _legacyFile();
-      String? raw;
-      if (await file.exists()) {
-        raw = await _vault.decrypt(await file.readAsString());
-      } else if (await legacy.exists()) {
-        raw = await legacy.readAsString();
-      }
+      final sealed = await LocalStore.read(_salesFile);
+      final legacy = sealed == null ? await LocalStore.read(_legacySalesFile) : null;
+      final raw = sealed != null ? await _vault.decrypt(sealed) : legacy;
       if (raw != null && raw.trim().isNotEmpty) {
         final decoded = await compute(_decodeQueueJson, raw);
         _queue = decoded.map(PendingSale.fromJson).toList();
-        if (await legacy.exists()) {
+        if (legacy != null) {
           await _saveSales();
-          await legacy.delete();
+          await LocalStore.delete(_legacySalesFile);
         }
       }
       await _loadMedicines();
@@ -892,15 +862,10 @@ class OfflineSyncService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<File> _medicineFile() async {
-    final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}/phyimacy_offline_medicines.enc');
-  }
-
   Future<void> _loadMedicines() async {
-    final file = await _medicineFile();
-    if (!await file.exists()) return;
-    final raw = await _vault.decrypt(await file.readAsString());
+    final sealed = await LocalStore.read(_medicinesFile);
+    if (sealed == null) return;
+    final raw = await _vault.decrypt(sealed);
     if (raw.trim().isEmpty) return;
     final decoded = await compute(_decodeQueueJson, raw);
     _medicineQueue = decoded.map(PendingMedicineWrite.fromJson).toList();
@@ -912,15 +877,13 @@ class OfflineSyncService extends ChangeNotifier {
   }
 
   Future<void> _saveSales() async {
-    final file = await _file();
     final payload = await compute(_encodeQueueJson, [for (final sale in _queue) sale.toJson()]);
-    await file.writeAsString(await _vault.encrypt(payload), flush: true);
+    await LocalStore.write(_salesFile, await _vault.encrypt(payload));
   }
 
   Future<void> _saveMedicines() async {
-    final file = await _medicineFile();
     final payload = await compute(_encodeQueueJson, [for (final change in _medicineQueue) change.toJson()]);
-    await file.writeAsString(await _vault.encrypt(payload), flush: true);
+    await LocalStore.write(_medicinesFile, await _vault.encrypt(payload));
   }
 }
 

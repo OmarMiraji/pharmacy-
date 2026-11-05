@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
 import '../firebase_options.dart';
 
@@ -148,15 +148,26 @@ class AuthAccountService {
     final projectId = DefaultFirebaseOptions.currentPlatform.projectId;
     final uri = Uri.https('$_region-$projectId.cloudfunctions.net', '/$name');
     final payload = jsonEncode({'data': data});
-    final client = _httpClient();
     try {
-      final request = await client.postUrl(uri).timeout(const Duration(seconds: 20));
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-      request.add(utf8.encode(payload));
-      final response = await request.close().timeout(const Duration(seconds: 25));
-      final text = await response.transform(utf8.decoder).join();
-      final decoded = text.isEmpty ? null : jsonDecode(text);
+      final response = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 45));
+      final text = utf8.decode(response.bodyBytes, allowMalformed: true);
+      final decoded = _tryDecode(text);
+      if (decoded == null && text.trim().isNotEmpty) {
+        throw _CallableError(
+          response.statusCode == 404 ? 'not-found' : 'unavailable',
+          'Could not reach Cloud Functions.',
+          retryWithIdentity: true,
+        );
+      }
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (decoded is Map && decoded['result'] is Map) {
           return Map<String, dynamic>.from(decoded['result'] as Map);
@@ -167,14 +178,19 @@ class AuthAccountService {
       throw _callableFromBody(response.statusCode, decoded, text);
     } on _CallableError {
       rethrow;
-    } on SocketException {
-      throw _CallableError('unavailable', 'No internet connection. Try again.', retryWithIdentity: true);
     } on TimeoutException {
       throw _CallableError('deadline-exceeded', 'Connection timed out. Try again.', retryWithIdentity: true);
-    } on HttpException {
-      throw _CallableError('unavailable', 'Could not reach Cloud Functions.', retryWithIdentity: true);
-    } finally {
-      client.close();
+    } on Exception {
+      throw _CallableError('unavailable', 'No internet connection. Try again.', retryWithIdentity: true);
+    }
+  }
+
+  Object? _tryDecode(String text) {
+    if (text.trim().isEmpty) return null;
+    try {
+      return jsonDecode(text);
+    } on FormatException {
+      return null;
     }
   }
 
@@ -197,16 +213,6 @@ class AuthAccountService {
       return _CallableError('unavailable', message, retryWithIdentity: true);
     }
     return _CallableError(code, message, retryWithIdentity: status >= 500);
-  }
-
-  HttpClient _httpClient() {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 20);
-    client.idleTimeout = const Duration(seconds: 15);
-    client.autoUncompress = true;
-    client.badCertificateCallback = (cert, host, port) => false;
-    client.userAgent = 'PharmSpecio/windows';
-    return client;
   }
 
   /// True when Firebase knows this email, false when it does not, null when it will not say.
@@ -245,14 +251,12 @@ class AuthAccountService {
   Future<Map<String, dynamic>> _identity(String method, Map<String, Object> body) async {
     final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
     final uri = Uri.https('identitytoolkit.googleapis.com', '/v1/$method', {'key': apiKey});
-    final client = _httpClient();
     try {
-      final request = await client.postUrl(uri).timeout(const Duration(seconds: 20));
-      request.headers.contentType = ContentType.json;
-      request.add(utf8.encode(jsonEncode(body)));
-      final response = await request.close().timeout(const Duration(seconds: 25));
-      final text = await response.transform(utf8.decoder).join();
-      final json = jsonDecode(text);
+      final response = await http
+          .post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 45));
+      final text = utf8.decode(response.bodyBytes, allowMalformed: true);
+      final json = _tryDecode(text);
       if (json is! Map<String, dynamic>) {
         throw StateError('Unexpected sign-in response. Try again.');
       }
@@ -261,14 +265,12 @@ class AuthAccountService {
         throw _IdentityError((error['message'] as String? ?? 'IDENTITY_ERROR').trim());
       }
       return json;
-    } on SocketException {
-      throw StateError('No internet connection. Try again.');
     } on TimeoutException {
       throw StateError('Connection timed out. Try again.');
-    } on HttpException {
-      throw StateError('Connection dropped. Check internet, then try again.');
-    } finally {
-      client.close();
+    } on _IdentityError {
+      rethrow;
+    } on Exception {
+      throw StateError('No internet connection. Try again.');
     }
   }
 }

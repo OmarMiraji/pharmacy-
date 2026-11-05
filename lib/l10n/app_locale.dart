@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
+
+import '../platform/local_store.dart';
 
 class AppLocale extends ChangeNotifier {
   AppLocale._();
@@ -14,11 +14,8 @@ class AppLocale extends ChangeNotifier {
 
   Future<void> load() async {
     try {
-      final file = await _file();
-      if (await file.exists()) {
-        final saved = (await file.readAsString()).trim();
-        if (saved == 'sw' || saved == 'en') code = saved;
-      }
+      final saved = (await LocalStore.read(_fileName) ?? '').trim();
+      if (saved == 'sw' || saved == 'en') code = saved;
     } catch (_) {}
   }
 
@@ -32,15 +29,11 @@ class AppLocale extends ChangeNotifier {
 
   Future<void> _persist(String value) async {
     try {
-      final file = await _file();
-      await file.writeAsString(value);
+      await LocalStore.write(_fileName, value);
     } catch (_) {}
   }
 
-  Future<File> _file() async {
-    final dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/app_locale.txt');
-  }
+  static const _fileName = 'app_locale.txt';
 }
 
 abstract final class S {

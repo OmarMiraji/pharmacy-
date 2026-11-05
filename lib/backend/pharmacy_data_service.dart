@@ -1,9 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../platform/file_saver.dart';
 import 'firestore_collections.dart';
 import 'tenant_context.dart';
 
@@ -33,7 +34,8 @@ class PharmacyDataService {
     FirestoreCollections.sales: FirestoreCollections.saleItems,
   };
 
-  Future<File> backupToFile() async {
+  /// Returns where the backup was saved (a path, or a file name in the browser's downloads).
+  Future<String> backupToFile() async {
     TenantContext.instance.assertWritable();
     final pharmacyId = TenantContext.instance.requirePharmacyId();
     final payload = <String, dynamic>{
@@ -67,18 +69,17 @@ class PharmacyDataService {
 
     final json = const JsonEncoder.withIndent('  ').convert(payload);
     final suggested = 'phyimacy-backup-$pharmacyId.json';
-    final savedPath = await FilePicker.platform.saveFile(
+    final savedPath = await FileSaver.saveAs(
       dialogTitle: 'Save pharmacy backup',
       fileName: suggested,
-      type: FileType.custom,
-      allowedExtensions: const ['json'],
+      extension: 'json',
+      bytes: Uint8List.fromList(utf8.encode(json)),
+      mimeType: 'application/json',
     );
-    if (savedPath == null || savedPath.trim().isEmpty) {
+    if (savedPath == null) {
       throw StateError('Backup cancelled.');
     }
-    final file = File(savedPath.endsWith('.json') ? savedPath : '$savedPath.json');
-    await file.writeAsString(json);
-    return file;
+    return savedPath;
   }
 
   Future<int> restoreFromPickedFile() async {
@@ -88,10 +89,13 @@ class PharmacyDataService {
       dialogTitle: 'Restore pharmacy backup',
       type: FileType.custom,
       allowedExtensions: const ['json'],
+      withData: true,
     );
-    final path = picked?.files.single.path;
-    if (path == null) throw StateError('Restore cancelled.');
-    final decoded = jsonDecode(await File(path).readAsString());
+    final file = picked?.files.single;
+    if (file == null) throw StateError('Restore cancelled.');
+    final bytes = await FileSaver.readPicked(file);
+    if (bytes == null) throw StateError('Restore cancelled.');
+    final decoded = jsonDecode(utf8.decode(bytes));
     if (decoded is! Map<String, dynamic>) {
       throw StateError('Invalid backup file.');
     }

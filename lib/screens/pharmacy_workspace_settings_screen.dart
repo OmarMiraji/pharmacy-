@@ -142,8 +142,8 @@ class _PharmacyWorkspaceSettingsScreenState extends State<PharmacyWorkspaceSetti
   Future<void> _backup() async {
     setState(() => _busy = true);
     try {
-      final file = await PharmacyDataService().backupToFile();
-      _toast('Backup saved: ${file.path}');
+      final savedTo = await PharmacyDataService().backupToFile();
+      _toast('Backup saved: $savedTo');
     } catch (error) {
       _toast('$error', error: true);
     } finally {

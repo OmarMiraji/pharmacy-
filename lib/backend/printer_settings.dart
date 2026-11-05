@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
+import '../platform/local_store.dart';
 
 class PrinterSettings {
   const PrinterSettings({
@@ -74,9 +73,9 @@ class PrinterSettingsStore {
 
   Future<void> load() async {
     try {
-      final file = await _file();
-      if (!await file.exists()) return;
-      final decoded = jsonDecode(await file.readAsString());
+      final raw = await LocalStore.read(_fileName);
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
       if (decoded is Map) {
         _settings = PrinterSettings.fromJson(Map<String, dynamic>.from(decoded));
       }
@@ -90,16 +89,11 @@ class PrinterSettingsStore {
 
   Future<void> save() async {
     try {
-      final file = await _file();
-      await file.parent.create(recursive: true);
-      await file.writeAsString(jsonEncode(_settings.toJson()));
+      await LocalStore.write(_fileName, jsonEncode(_settings.toJson()));
     } catch (_) {}
   }
 
-  Future<File> _file() async {
-    final dir = await getApplicationSupportDirectory();
-    return File('${dir.path}${Platform.pathSeparator}printer_settings.json');
-  }
+  static const _fileName = 'printer_settings.json';
 
   void update(PrinterSettings Function(PrinterSettings current) updater) {
     set(updater(_settings));
