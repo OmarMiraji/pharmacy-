@@ -44,6 +44,7 @@ import 'platform/file_saver.dart';
 import 'theme/brand.dart';
 import 'widgets/app_notice.dart';
 import 'widgets/increase_stock_dialog.dart';
+import 'screens/activity_log_screen.dart';
 import 'screens/subscription_admin_screen.dart';
 import 'screens/receive_purchase_dialog.dart';
 import 'screens/super_admin_home.dart';
@@ -4827,6 +4828,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         );
+        if ((widget.profile.pharmacyId ?? '').trim().isNotEmpty) {
+          cards.add(
+            _SettingCardOption(
+              id: 'activity',
+              label: S.t('Activity', 'Shughuli'),
+              icon: Icons.history_rounded,
+              description: S.t(
+                'Who added, edited, or removed what',
+                'Nani ameongeza, amehariri, au ameondoa nini',
+              ),
+            ),
+          );
+        }
       }
       cards.add(
         _SettingCardOption(
@@ -4891,6 +4905,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         pharmacyId: widget.profile.pharmacyId,
         canDelete: true,
       ),
+      'activity' => ActivityLogScreen(pharmacyId: widget.profile.pharmacyId),
       'pharmacies' => AccountsAdminScreen(profile: widget.profile),
       'licenses' => SubscriptionAdminScreen(profile: widget.profile),
       'updates' => AppUpdateScreen(profile: widget.profile),
@@ -7395,7 +7410,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
     );
     if (confirmed != true) return;
     try {
-      await service.archiveMedicine(medicine.id);
+      await service.archiveMedicine(medicine.id, name: medicine.name);
       if (!context.mounted) return;
       showAppNotice(
         context,

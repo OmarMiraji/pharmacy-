@@ -711,6 +711,25 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    // Append-only history: nobody (not even super admin) can edit or delete an entry.
+    match /activity_logs/{logId} {
+      allow create: if signedIn()
+        && activeUserRecord()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.level in ['shop', 'security']
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expireAt is timestamp
+        && request.resource.data.keys().hasOnly(['action', 'level', 'actorUid', 'actorEmail', 'actorName',
+            'actorRole', 'pharmacyId', 'pharmacyName', 'target', 'detail', 'createdAt', 'expireAt'])
+        && (isSuperAdmin() || (tenantId() != null && request.resource.data.pharmacyId == tenantId()));
+      allow read: if isSuperAdmin() || (
+        isShopAdminActor()
+        && tenantId() != null
+        && resource.data.pharmacyId == tenantId()
+      );
+      allow update, delete: if false;
+    }
+
     match /mail_settings/{docId} {
       allow read, write: if isSuperAdmin();
     }

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'activity_log_service.dart';
 import 'firestore_collections.dart';
 import 'expiry_priority.dart';
 import 'permissions.dart';
@@ -377,6 +378,10 @@ class SalesService {
       return true;
     });
     if (!didVoid) return;
+    final receipt = (saleData['receiptNumber'] as String?)?.trim() ?? '';
+    ActivityLogService.record(ActivityAction.saleVoided,
+        target: receipt.isEmpty ? saleId : receipt,
+        detail: 'TZS ${(saleData['totalMinor'] as num?)?.toInt() ?? 0} · ${restoreByMedicine.length} items returned to stock');
     try {
       final writes = _firestore.batch();
       for (final entry in restoreByMedicine.entries) {

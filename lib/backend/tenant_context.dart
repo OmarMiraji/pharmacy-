@@ -10,6 +10,8 @@ class TenantContext {
   bool readOnly = false;
   bool blocked = false;
   String? lockMessage;
+  String actorName = '';
+  String actorRole = '';
 
   void bind({
     required bool isSuperAdmin,
@@ -34,6 +36,8 @@ class TenantContext {
     readOnly = false;
     blocked = false;
     lockMessage = null;
+    actorName = '';
+    actorRole = '';
   }
 
   String requirePharmacyId() {

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../platform/file_saver.dart';
+import 'activity_log_service.dart';
 import 'firestore_collections.dart';
 import 'tenant_context.dart';
 
@@ -140,6 +141,8 @@ class PharmacyDataService {
         }
       }
     }
+    ActivityLogService.record(ActivityAction.dataRestored,
+        level: ActivityLevel.security, target: file.name, detail: '$restored records', pharmacyId: pharmacyId);
     return restored;
   }
 
@@ -169,12 +172,14 @@ class PharmacyDataService {
   Future<int> clearOperationalData({String? pharmacyId}) async {
     var deleted = 0;
     for (final name in _dataCollections) {
-      deleted += await clearCollection(name, pharmacyId: pharmacyId);
+      deleted += await clearCollection(name, pharmacyId: pharmacyId, log: false);
     }
+    ActivityLogService.record(ActivityAction.dataCleared,
+        level: ActivityLevel.security, target: 'All shop data', detail: '$deleted records', pharmacyId: _requirePharmacyId(pharmacyId));
     return deleted;
   }
 
-  Future<int> clearCollection(String collectionName, {String? pharmacyId}) async {
+  Future<int> clearCollection(String collectionName, {String? pharmacyId, bool log = true}) async {
     if (!_dataCollections.contains(collectionName)) {
       throw ArgumentError('Unknown data group: $collectionName');
     }
@@ -192,6 +197,10 @@ class PharmacyDataService {
       }
       await doc.reference.delete();
       deleted++;
+    }
+    if (log) {
+      ActivityLogService.record(ActivityAction.dataCleared,
+          level: ActivityLevel.security, target: collectionLabels[collectionName] ?? collectionName, detail: '$deleted records', pharmacyId: id);
     }
     return deleted;
   }

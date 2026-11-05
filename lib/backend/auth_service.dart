@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'activity_log_service.dart';
 import 'auth_account_service.dart';
 import 'firestore_collections.dart';
 import 'login_log_service.dart';
@@ -72,6 +73,7 @@ class AuthService {
     try {
       await clearTemporaryPasswordFlag();
     } catch (_) {}
+    ActivityLogService.record(ActivityAction.passwordChanged, level: ActivityLevel.security, target: currentUser?.email);
   }
 
   static const minOwnPasswordLength = 8;

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import 'activity_log_service.dart';
 import 'firestore_collections.dart';
 import 'models.dart';
 import 'offline_sync_service.dart';
@@ -307,6 +308,15 @@ class MedicineService {
     return docRef.id;
   }
 
+  bool _quietActivity = false;
+
+  void _logMedicineCreated(String name, int sellingPriceMinor, int openingQuantity) {
+    if (_quietActivity) return;
+    ActivityLogService.record(ActivityAction.medicineCreated,
+        target: name.trim(),
+        detail: 'Price TZS $sellingPriceMinor${openingQuantity > 0 ? ' · opening stock $openingQuantity' : ''}');
+  }
+
   Future<MedicineImportReport> importMedicines(
     List<dynamic> rows, {
     void Function(int done, int total)? onProgress,
@@ -315,7 +325,23 @@ class MedicineService {
     if (rows.isEmpty) {
       return const MedicineImportReport(imported: 0, skippedExisting: 0, failed: 0);
     }
+    _quietActivity = true;
+    try {
+      final report = await _importRows(rows, onProgress: onProgress);
+      if (report.imported > 0) {
+        ActivityLogService.record(ActivityAction.medicinesImported,
+            target: '${report.imported} medicines', detail: 'skipped ${report.skippedExisting}, failed ${report.failed}');
+      }
+      return report;
+    } finally {
+      _quietActivity = false;
+    }
+  }
 
+  Future<MedicineImportReport> _importRows(
+    List<dynamic> rows, {
+    void Function(int done, int total)? onProgress,
+  }) async {
     var imported = 0;
     var skippedExisting = 0;
     var failed = 0;
@@ -476,6 +502,11 @@ class MedicineService {
     for (var offset = 0; offset < lines.length; offset += chunkSize) {
       final chunk = lines.sublist(offset, math.min(offset + chunkSize, lines.length));
       total += await _writeOffExpiredChunk(chunk, createdBy);
+    }
+    if (total > 0) {
+      ActivityLogService.record(ActivityAction.stockWrittenOff,
+          target: lines.length == 1 ? lines.first.medicineName : '${lines.length} expired lines',
+          detail: '$total units removed (expired)');
     }
     return total;
   }
@@ -675,6 +706,7 @@ class MedicineService {
           ),
         );
       });
+      _logMedicineCreated(name, sellingPriceMinor, openingQuantity);
       return ref.id;
     }
     await ref.set(_tenant.withTenant({
@@ -698,6 +730,7 @@ class MedicineService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }));
+    _logMedicineCreated(name, sellingPriceMinor, 0);
     return ref.id;
   }
 
@@ -854,6 +887,7 @@ class MedicineService {
       if (expiryDate != null) 'expiryDate': Timestamp.fromDate(expiryDate),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    _logMedicineUpdate(previous, name.trim(), purchasePriceMinor, sellingPriceMinor, reorderLevel, size);
     if (oldPack <= 1 && size > 1) {
       try {
         await _convertPackStockToTablets(medicineId, size);
@@ -880,6 +914,33 @@ class MedicineService {
       }
     } on FirebaseException catch (error) {
       if (error.code != 'permission-denied') rethrow;
+    }
+  }
+
+  void _logMedicineUpdate(
+    Map<String, dynamic> previous,
+    String name,
+    int buy,
+    int sell,
+    int reorder,
+    int pack,
+  ) {
+    int num0(String key) => (previous[key] as num?)?.toInt() ?? 0;
+    final oldSell = num0('sellingPriceMinor');
+    final oldBuy = num0('purchasePriceMinor');
+    if (oldSell != sell || oldBuy != buy) {
+      ActivityLogService.record(ActivityAction.medicinePriceChanged,
+          target: name,
+          detail: [
+            if (oldSell != sell) 'Selling TZS $oldSell → $sell',
+            if (oldBuy != buy) 'Buying TZS $oldBuy → $buy',
+          ].join(' · '));
+      return;
+    }
+    final oldName = (previous['name'] as String? ?? '').trim();
+    if (oldName != name || num0('reorderLevel') != reorder || (num0('packSize') < 1 ? 1 : num0('packSize')) != pack) {
+      ActivityLogService.record(ActivityAction.medicineUpdated,
+          target: name, detail: oldName != name ? 'Renamed from $oldName' : 'Details changed');
     }
   }
 
@@ -1020,6 +1081,8 @@ class MedicineService {
         ),
       );
     });
+    ActivityLogService.record(ActivityAction.stockSet,
+        target: name, detail: '$current → $quantity (${delta > 0 ? '+' : ''}$delta)');
   }
 
   Future<void> _convertPackStockToTablets(String medicineId, int packSize) async {
@@ -1078,12 +1141,13 @@ class MedicineService {
     }));
   }
 
-  Future<void> archiveMedicine(String medicineId) {
+  Future<void> archiveMedicine(String medicineId, {String? name}) async {
     _tenant.assertWritable();
-    return _medicines.doc(medicineId).update({
+    await _medicines.doc(medicineId).update({
       'isActive': false,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    ActivityLogService.record(ActivityAction.medicineDeleted, target: (name ?? '').trim().isEmpty ? medicineId : name);
   }
 }
 

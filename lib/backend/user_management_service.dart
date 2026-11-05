@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'activity_log_service.dart';
 import 'auth_account_service.dart';
 import 'firestore_collections.dart';
 import 'permissions.dart';
@@ -55,11 +56,6 @@ class UserManagementService {
 
   static bool isProtectedRole(Object? role) => '$role'.trim().toLowerCase() == 'super_admin';
 
-  Future<void> _assertNotSuperAdmin(String userId) async {
-    final snap = await _firestore.collection(FirestoreCollections.users).doc(userId.trim()).get();
-    if (isProtectedRole(snap.data()?['role'])) throw StateError(protectedSuperAdminMessage);
-  }
-
   Future<void> updateAccess({
     required String userId,
     required String role,
@@ -74,14 +70,25 @@ class UserManagementService {
     if (!TenantContext.instance.isSuperAdmin && actorId != null && actorId == userId) {
       throw StateError('You cannot change your own access. Ask your administrator.');
     }
-    await _assertNotSuperAdmin(userId);
+    final ref = _firestore.collection(FirestoreCollections.users).doc(userId);
+    final before = (await ref.get()).data() ?? const <String, dynamic>{};
+    if (isProtectedRole(before['role'])) throw StateError(protectedSuperAdminMessage);
     final resolved = AppPermissions.resolvedPermissions(role, permissions);
-    await _firestore.collection(FirestoreCollections.users).doc(userId).update({
+    await ref.update({
       'role': role,
       'permissions': resolved,
       'isActive': isActive,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    _logAccessChange(
+      before: before,
+      name: (before['displayName'] as String? ?? '').trim(),
+      email: (before['email'] as String? ?? '').trim(),
+      role: role,
+      permissions: resolved,
+      isActive: isActive,
+      pharmacyId: (before['pharmacyId'] as String? ?? '').trim(),
+    );
   }
 
   Future<void> updateProfileDetails({
@@ -94,7 +101,7 @@ class UserManagementService {
     required bool isActive,
     String? pharmacyId,
     String? employeeCode,
-  }) {
+  }) async {
     TenantContext.instance.assertWritable();
     if (!AppPermissions.roleDefaults.containsKey(role)) {
       throw ArgumentError.value(role, 'role', 'Unsupported role.');
@@ -116,7 +123,7 @@ class UserManagementService {
     }
     final resolved = AppPermissions.resolvedPermissions(role, permissions);
     final ref = _firestore.collection(FirestoreCollections.users).doc(userId);
-    return _firestore.runTransaction((tx) async {
+    final before = await _firestore.runTransaction((tx) async {
       final snap = await tx.get(ref);
       final existing = snap.data() ?? const <String, dynamic>{};
       if (isProtectedRole(existing['role']) && (!isProtectedRole(role) || !isActive)) {
@@ -140,7 +147,55 @@ class UserManagementService {
         if (role != 'super_admin' && shopId.isNotEmpty) 'pharmacyId': shopId,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      return existing;
     });
+    _logAccessChange(
+      before: before,
+      name: displayName.trim(),
+      email: email.trim(),
+      role: role,
+      permissions: resolved,
+      isActive: isActive,
+      pharmacyId: (role != 'super_admin' ? (before['pharmacyId'] as String? ?? tenantId) : '').trim(),
+    );
+  }
+
+  void _logAccessChange({
+    required Map<String, dynamic> before,
+    required String name,
+    required String email,
+    required String role,
+    required Map<String, bool> permissions,
+    required bool isActive,
+    required String pharmacyId,
+  }) {
+    final target = '$name <$email>';
+    final shopId = pharmacyId.isEmpty ? null : pharmacyId;
+    final oldRole = (before['role'] as String? ?? '').trim();
+    final wasActive = before['isActive'] != false;
+    final oldPerms = Map<String, dynamic>.from(before['permissions'] as Map? ?? const {});
+    final added = [for (final e in permissions.entries) if (e.value && oldPerms[e.key] != true) e.key];
+    final removed = [for (final e in permissions.entries) if (!e.value && oldPerms[e.key] == true) e.key];
+    if (wasActive != isActive) {
+      ActivityLogService.record(isActive ? ActivityAction.staffEnabled : ActivityAction.staffDisabled,
+          level: ActivityLevel.security, target: target, pharmacyId: shopId);
+    }
+    if (oldRole.isNotEmpty && oldRole != role) {
+      ActivityLogService.record(ActivityAction.staffRoleChanged,
+          level: ActivityLevel.security, target: target, detail: '$oldRole → $role', pharmacyId: shopId);
+    } else if (added.isNotEmpty || removed.isNotEmpty) {
+      ActivityLogService.record(ActivityAction.staffUpdated,
+          level: ActivityLevel.security,
+          target: target,
+          detail: [
+            if (added.isNotEmpty) '+ ${added.join(', ')}',
+            if (removed.isNotEmpty) '- ${removed.join(', ')}',
+          ].join('  '),
+          pharmacyId: shopId);
+    } else if (wasActive == isActive &&
+        ((before['displayName'] ?? '') != name || (before['email'] ?? '') != email)) {
+      ActivityLogService.record(ActivityAction.staffUpdated, target: target, detail: 'name/email', pharmacyId: shopId);
+    }
   }
 
   Future<String> createLoginAndProfile({
@@ -259,6 +314,13 @@ class UserManagementService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    ActivityLogService.record(
+      ActivityAction.staffCreated,
+      level: ActivityLevel.security,
+      target: '${displayName.trim()} <${email.trim()}>',
+      detail: role,
+      pharmacyId: role == 'super_admin' ? null : tenantId,
+    );
     await AuthAccountService().rememberAuthUid(email: email.trim(), uid: userId.trim());
   }
 
@@ -275,6 +337,14 @@ class UserManagementService {
       await AuthAccountService().rememberAuthUid(email: email, uid: id);
     }
     await _firestore.collection(FirestoreCollections.users).doc(id).delete();
+    final data = snap.data() ?? const <String, dynamic>{};
+    ActivityLogService.record(
+      ActivityAction.staffDeleted,
+      level: ActivityLevel.security,
+      target: '${(data['displayName'] as String? ?? '').trim()} <$email>',
+      detail: (data['role'] as String? ?? '').trim(),
+      pharmacyId: (data['pharmacyId'] as String? ?? '').trim().isEmpty ? null : (data['pharmacyId'] as String).trim(),
+    );
     await AuthAccountService().deleteAuthUser(id);
   }
 
@@ -313,5 +383,15 @@ class UserManagementService {
       throw StateError(text.isEmpty ? 'Could not set that login password.' : text);
     }
     await markTemporaryPassword(userId: userId, password: next);
+    try {
+      final data = (await _firestore.collection(FirestoreCollections.users).doc(userId).get()).data() ?? const {};
+      final shop = (data['pharmacyId'] as String? ?? '').trim();
+      ActivityLogService.record(
+        ActivityAction.passwordReset,
+        level: ActivityLevel.security,
+        target: '${(data['displayName'] as String? ?? '').trim()} <${(data['email'] as String? ?? '').trim()}>',
+        pharmacyId: shop.isEmpty ? null : shop,
+      );
+    } catch (_) {}
   }
 }

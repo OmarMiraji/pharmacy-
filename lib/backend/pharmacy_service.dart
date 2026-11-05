@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'activity_log_service.dart';
 import 'auth_account_service.dart';
 import 'firestore_collections.dart';
 import 'permissions.dart';
@@ -123,6 +124,8 @@ class PharmacyService {
         'Firebase login was created (uid $ownerId) but the shop record failed: $error. Use Create/repair admin login on this shop, or delete the incomplete shop and try again.',
       );
     }
+    ActivityLogService.record(ActivityAction.shopCreated,
+        level: ActivityLevel.security, target: '$trimmed — admin $ownerMail', pharmacyId: doc.id, pharmacyName: trimmed);
     return ShopProvision(pharmacyId: doc.id, adminUid: ownerId, adminEmail: ownerMail);
   }
 
@@ -147,6 +150,8 @@ class PharmacyService {
       'ownerUserId': uid,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    ActivityLogService.record(ActivityAction.staffCreated,
+        level: ActivityLevel.security, target: '${(displayName ?? '').trim()} <$mail>', detail: 'admin', pharmacyId: id);
   }
 
   Future<void> updatePharmacyProfile({
@@ -171,16 +176,24 @@ class PharmacyService {
     if (TenantContext.instance.pharmacyId == pharmacyId) {
       TenantContext.instance.pharmacyName = trimmed;
     }
+    ActivityLogService.record(ActivityAction.shopUpdated,
+        target: trimmed, detail: [phone, address].where((v) => (v ?? '').trim().isNotEmpty).join(' · '),
+        pharmacyId: pharmacyId, pharmacyName: trimmed);
   }
 
   Future<void> deletePharmacy(String pharmacyId) async {
     final id = pharmacyId.trim();
     if (id.isEmpty) throw ArgumentError('Pharmacy is required.');
+    final name = (await getPharmacy(id))?.name ?? id;
     await _firestore.collection(FirestoreCollections.pharmacies).doc(id).delete();
+    ActivityLogService.record(ActivityAction.shopDeleted,
+        level: ActivityLevel.security, target: name, pharmacyId: id, pharmacyName: name);
   }
 
   Future<PharmacySession> bindSession(UserProfile profile) async {
     final tenant = TenantContext.instance;
+    tenant.actorName = profile.displayName.trim().isEmpty ? profile.email : profile.displayName.trim();
+    tenant.actorRole = profile.role;
     var linkedId = (profile.pharmacyId ?? '').trim();
     if (linkedId.isEmpty && !profile.isSuperAdmin) {
       linkedId = await findOwnedPharmacyId(email: profile.email, userId: profile.id) ?? '';

@@ -13,6 +13,7 @@ import '../backend/user_profile.dart';
 import '../theme/brand.dart';
 import '../l10n/app_locale.dart';
 import '../widgets/language_toggle.dart';
+import 'activity_log_screen.dart';
 import 'announcements_admin_screen.dart';
 import 'login_logs_screen.dart';
 import 'app_update_screen.dart';
@@ -75,6 +76,7 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
         ]),
         _NavSection('SYSTEM', [
           _NavDest('support', S.t('Support data', 'Data ya msaada'), Icons.storage_rounded),
+          _NavDest('activity', S.t('Security activity', 'Shughuli za usalama'), Icons.policy_outlined),
           _NavDest('audit', S.t('Audit logs', 'Audit'), Icons.receipt_long_rounded),
           _NavDest('security', S.t('Security', 'Usalama'), Icons.shield_outlined),
         ]),
@@ -269,6 +271,8 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
         return PharmacyWorkspaceSettingsScreen(profile: widget.profile);
       case 'audit':
         return const AuditLogsScreen();
+      case 'activity':
+        return const SingleChildScrollView(child: ActivityLogScreen());
       case 'logins':
         return LoginLogsScreen(excludeActorUid: widget.profile.id, canDelete: true);
       case 'security':
