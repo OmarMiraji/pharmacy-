@@ -53,7 +53,9 @@ function layout({title, intro, rows, extraHtml}) {
         ${details ? `<table style="width:100%;border-collapse:collapse;margin:8px 0 18px;">${details}</table>` : ""}
         ${extraHtml || ""}
         <p style="margin:22px 0 0;color:#68807d;font-size:12px;line-height:1.5;">
-          Open the PharmSpecio Windows app and sign in with this email. Keep this message private.
+          Sign in on the PharmSpecio app or in your browser at
+          <a href="${WEB_APP_URL}" style="color:#0f766e;font-weight:700;">${WEB_APP_URL.replace("https://", "")}</a>.
+          Keep this message private.
         </p>
       </div>
       <div style="padding:14px 28px;background:#f7fbfa;color:#68807d;font-size:11px;">
@@ -63,7 +65,26 @@ function layout({title, intro, rows, extraHtml}) {
   </div>`;
 }
 
-function welcomeAdmin({name, email, shopName, trialEndsAt, isTrial}) {
+const WEB_APP_URL = "https://pharmspecio.web.app/app/";
+
+function tempPasswordHtml(tempPassword) {
+  if (!tempPassword) return "";
+  return `
+        <div style="margin:4px 0 6px;padding:14px 16px;border-radius:12px;background:#fff6dd;border:1px solid #f1d58a;">
+          <div style="color:#6b4a00;font-size:12px;">Temporary password</div>
+          <div style="color:#183b3b;font-size:22px;font-weight:800;letter-spacing:1px;margin-top:2px;">${escapeHtml(tempPassword)}</div>
+          <div style="color:#6b4a00;font-size:12px;margin-top:6px;">You will be asked to choose your own password the first time you sign in.</div>
+        </div>`;
+}
+
+function tempPasswordText(tempPassword) {
+  return tempPassword ? [
+    `Temporary password: ${tempPassword}`,
+    "You will be asked to choose your own password the first time you sign in.",
+  ] : [];
+}
+
+function welcomeAdmin({name, email, shopName, trialEndsAt, isTrial, tempPassword}) {
   const trialLine = isTrial
     ? `Your shop is on a <b>7-day free trial</b>${trialEndsAt ? `, until <b>${escapeHtml(formatDate(trialEndsAt))}</b>` : ""}. You can enter medicines, sales, and staff during the trial.`
     : "Your shop login is ready.";
@@ -75,8 +96,9 @@ function welcomeAdmin({name, email, shopName, trialEndsAt, isTrial}) {
       trialLine.replace(/<[^>]+>/g, ""),
       shopName ? `Shop: ${shopName}` : "",
       `Login email: ${email}`,
+      ...tempPasswordText(tempPassword),
       "Role: Shop admin",
-      "Open the PharmSpecio Windows app and sign in with this email and the password that was set for you.",
+      `Sign in on the PharmSpecio app or in your browser: ${WEB_APP_URL}`,
     ].filter(Boolean).join("\n"),
     html: layout({
       title: "Welcome to PharmSpecio",
@@ -87,11 +109,12 @@ function welcomeAdmin({name, email, shopName, trialEndsAt, isTrial}) {
         {label: "Role", value: "Shop admin"},
         {label: isTrial ? "Trial" : "Access", value: isTrial ? `7-day trial${trialEndsAt ? ` · ends ${formatDate(trialEndsAt)}` : ""}` : "Active"},
       ],
+      extraHtml: tempPasswordHtml(tempPassword),
     }),
   };
 }
 
-function welcomeStaff({name, email, shopName, role}) {
+function welcomeStaff({name, email, shopName, role, tempPassword}) {
   return {
     subject: `Your PharmSpecio login${shopName ? ` — ${shopName}` : ""}`,
     text: [
@@ -99,8 +122,9 @@ function welcomeStaff({name, email, shopName, role}) {
       "A shop login has been created for you on PharmSpecio.",
       shopName ? `Shop: ${shopName}` : "",
       `Login email: ${email}`,
+      ...tempPasswordText(tempPassword),
       `Role: ${roleLabel(role)}`,
-      "Sign in on the PharmSpecio Windows app with this email and the password your shop admin gave you.",
+      `Sign in on the PharmSpecio app or in your browser: ${WEB_APP_URL}`,
     ].filter(Boolean).join("\n"),
     html: layout({
       title: "Your PharmSpecio login",
@@ -110,6 +134,7 @@ function welcomeStaff({name, email, shopName, role}) {
         {label: "Login email", value: email},
         {label: "Role", value: roleLabel(role)},
       ],
+      extraHtml: tempPasswordHtml(tempPassword),
     }),
   };
 }

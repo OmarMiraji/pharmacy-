@@ -1,20 +1,29 @@
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 
-function mailSettings() {
-  const user = String(process.env.MAIL_SMTP_USER || "aboulonso85@gmail.com").trim();
+// Gmail sender saved by the super admin in the app (mail_settings/smtp, super-admin-only rules);
+// environment variables still win when set.
+async function mailSettings() {
+  let stored = {};
+  try {
+    const snap = await admin.firestore().collection("mail_settings").doc("smtp").get();
+    if (snap.exists) stored = snap.data() || {};
+  } catch (error) {
+    console.warn("Could not read mail_settings/smtp", error.message);
+  }
+  const user = String(process.env.MAIL_SMTP_USER || stored.user || "").trim();
   return {
     resendKey: String(process.env.RESEND_API_KEY || "").trim(),
     smtpHost: String(process.env.MAIL_SMTP_HOST || "smtp.gmail.com").trim(),
     smtpPort: Number(process.env.MAIL_SMTP_PORT || 587),
     smtpUser: user,
-    smtpPass: String(process.env.MAIL_SMTP_PASS || "").replace(/\s+/g, ""),
+    smtpPass: String(process.env.MAIL_SMTP_PASS || stored.pass || "").replace(/\s+/g, ""),
     from: String(process.env.MAIL_FROM || `PharmSpecio <${user}>`).trim(),
   };
 }
 
-async function sendWithResend({from, to, subject, html, text}) {
-  const key = mailSettings().resendKey;
+async function sendWithResend({settings, from, to, subject, html, text}) {
+  const key = settings.resendKey;
   if (!key) return false;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -31,8 +40,7 @@ async function sendWithResend({from, to, subject, html, text}) {
   return true;
 }
 
-async function sendWithSmtp({from, to, subject, html, text}) {
-  const settings = mailSettings();
+async function sendWithSmtp({settings, from, to, subject, html, text}) {
   if (!settings.smtpHost || !settings.smtpUser || !settings.smtpPass) return false;
   const transporter = nodemailer.createTransport({
     host: settings.smtpHost,
@@ -49,19 +57,20 @@ async function sendEmail({to, subject, html, text, kind, meta}) {
   if (!email || !email.includes("@")) {
     throw new Error("A valid email is required.");
   }
-  const from = mailSettings().from;
+  const settings = await mailSettings();
+  const from = settings.from;
   let sent = false;
   let provider = "none";
   let errorMessage = "";
   try {
-    sent = await sendWithResend({from, to: email, subject, html, text});
+    sent = await sendWithResend({settings, from, to: email, subject, html, text});
     if (sent) provider = "resend";
     if (!sent) {
-      sent = await sendWithSmtp({from, to: email, subject, html, text});
+      sent = await sendWithSmtp({settings, from, to: email, subject, html, text});
       if (sent) provider = "smtp";
     }
     if (!sent) {
-      errorMessage = "Email provider is not configured (RESEND_API_KEY or MAIL_SMTP_*).";
+      errorMessage = "Email is not set up. Super admin: save the Gmail sender under Email settings.";
     }
   } catch (error) {
     errorMessage = String(error && error.message ? error.message : error);

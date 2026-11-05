@@ -6,7 +6,6 @@ import '../backend/pharmacy_service.dart';
 import '../backend/tenant_context.dart';
 import '../backend/tanzania_phone.dart';
 import '../backend/temp_password.dart';
-import '../backend/transactional_email_service.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
 import '../l10n/app_locale.dart';
@@ -321,27 +320,14 @@ Future<void> showCreateStaffDialog(
                               );
                             }
                             if (dialogContext.mounted) Navigator.pop(dialogContext);
-                            String? mailNote;
-                            try {
-                              mailNote = await TransactionalEmailService().notifyLoginCreated(
-                                toEmail: email.text,
-                                displayName: name.text,
-                                role: (canManageSuperAdmin && shopMode == 'new') ? 'admin' : role,
-                                pharmacyId: createdShopId,
-                                shopName: shopMode == 'new' ? pharmacyName.text : null,
-                                isNewShop: shopMode == 'new',
-                                temporaryPassword: initialPassword,
-                              );
-                            } catch (_) {}
                             if (hostContext.mounted) {
                               final created = shopMode == 'new'
                                   ? S.t('New pharmacy and admin login are ready.', 'Duka jipya na login ya admin viko tayari.')
                                   : S.t('Staff login is ready.', 'Login ya staff iko tayari.');
-                              final mailLine = switch (mailNote) {
-                                null => S.t('The login details were emailed to them.', 'Taarifa za login zimetumwa kwenye email yao.'),
-                                'email-not-ready' => S.t('Email is not set up, so share these details yourself.', 'Email haijawekwa, wape taarifa hizi wewe mwenyewe.'),
-                                _ => S.t('The email was not sent, so share these details yourself.', 'Email haijatumwa, wape taarifa hizi wewe mwenyewe.'),
-                              };
+                              final mailLine = S.t(
+                                'A welcome email with this temporary password is on its way to them. You can also copy and share it yourself.',
+                                'Email ya karibu yenye nenosiri hili la muda inatumwa kwao. Unaweza pia kunakili na kuwapa wewe mwenyewe.',
+                              );
                               await showTemporaryPasswordReadyDialog(
                                 hostContext,
                                 title: created,

@@ -1,8 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mailer/mailer.dart' as mailer;
 import 'package:mailer/smtp_server.dart';
 
+import 'firestore_collections.dart';
 import 'pharmacy_service.dart';
 
 class TransactionalEmailService {
@@ -18,6 +20,28 @@ class TransactionalEmailService {
     if (pass.length < 8) throw ArgumentError('Enter the 16-character App password.');
     await _storage.write(key: _userKey, value: user);
     await _storage.write(key: _passKey, value: pass);
+    await _pushSmtpToServer(user, pass);
+  }
+
+  /// Cloud Functions send welcome emails from every device (including the web) using this copy.
+  Future<void> _pushSmtpToServer(String user, String pass) {
+    return FirebaseFirestore.instance.collection(FirestoreCollections.mailSettings).doc('smtp').set({
+      'user': user,
+      'pass': pass,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Super admin devices that saved Gmail before server sending existed upload it once.
+  Future<void> syncSmtpToServer() async {
+    try {
+      final smtp = await loadSmtp();
+      if (smtp == null) return;
+      final doc = await FirebaseFirestore.instance.collection(FirestoreCollections.mailSettings).doc('smtp').get();
+      final data = doc.data() ?? const <String, dynamic>{};
+      if (data['user'] == smtp['user'] && data['pass'] == smtp['pass']) return;
+      await _pushSmtpToServer(smtp['user']!, smtp['pass']!);
+    } catch (_) {}
   }
 
   Future<Map<String, String>?> loadSmtp() async {

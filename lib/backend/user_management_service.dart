@@ -176,8 +176,8 @@ class UserManagementService {
       pharmacyId: shopId,
       phone: phone,
       employeeCode: employeeCode,
+      temporaryPassword: password,
     );
-    await markTemporaryPassword(userId: uid, password: password);
     return uid;
   }
 
@@ -206,6 +206,7 @@ class UserManagementService {
     String? pharmacyId,
     String? phone,
     String? employeeCode,
+    String? temporaryPassword,
   }) async {
     TenantContext.instance.assertWritable();
     if (userId.trim().isEmpty || displayName.trim().isEmpty || email.trim().isEmpty) {
@@ -236,6 +237,11 @@ class UserManagementService {
       'permissions': AppPermissions.resolvedPermissions(role, permissions),
       'isActive': isActive,
       if (role != 'super_admin') 'pharmacyId': tenantId,
+      if ((temporaryPassword ?? '').trim().isNotEmpty) ...{
+        'mustChangePassword': true,
+        'tempPassword': temporaryPassword!.trim(),
+        'tempPasswordSetAt': FieldValue.serverTimestamp(),
+      },
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

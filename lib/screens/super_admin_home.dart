@@ -7,6 +7,7 @@ import '../backend/pharmacy.dart';
 import '../backend/pharmacy_service.dart';
 import '../backend/subscription_service.dart';
 import '../backend/tenant_context.dart';
+import '../backend/transactional_email_service.dart';
 import '../backend/user_management_service.dart';
 import '../backend/user_profile.dart';
 import '../theme/brand.dart';
@@ -50,6 +51,12 @@ class _NavSection {
 
 class _SuperAdminHomeState extends State<SuperAdminHome> {
   String _id = 'dashboard';
+
+  @override
+  void initState() {
+    super.initState();
+    TransactionalEmailService().syncSmtpToServer();
+  }
 
   List<_NavSection> get _sections => [
         _NavSection('OVERVIEW', [

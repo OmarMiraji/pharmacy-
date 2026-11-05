@@ -4733,6 +4733,17 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late String _selected;
+  final _detailsKey = GlobalKey();
+
+  void _select(String id) {
+    setState(() => _selected = id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _detailsKey.currentContext;
+      if (target != null && target.mounted) {
+        Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -4887,9 +4898,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _ => PharmacyWorkspaceSettingsScreen(profile: widget.profile),
     };
 
-    final fillHeight = false;
-
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4977,15 +4986,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: _SettingsNavTile(
                     option: card,
                     selected: _selected == card.id,
-                    onTap: () => setState(() => _selected = card.id),
+                    onTap: () => _select(card.id),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 14),
-          Expanded(
-            child: Container(
+          Container(
+              key: _detailsKey,
               width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 480),
               padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -5038,14 +5048,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Expanded(
-                    child: fillHeight
-                        ? selectedContent
-                        : SingleChildScrollView(child: selectedContent),
-                  ),
+                  selectedContent,
                 ],
               ),
-            ),
           ),
         ],
       ),

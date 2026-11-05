@@ -86,7 +86,12 @@ exports.onUserCreatedEmail = onDocumentCreated(
         console.warn("Could not mark Auth email verified", uid, error.message);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      // The app writes the temporary password and shop details right after creating the profile.
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const fresh = await snap.ref.get();
+      if (fresh.exists) Object.assign(user, fresh.data());
+      if (user.emails && user.emails.welcomeSentAt) return;
+      const tempPassword = user.mustChangePassword === true ? String(user.tempPassword || "").trim() : "";
       const shop = await loadShop(user.pharmacyId);
       const name = String(user.displayName || "").trim() || email;
       const shopName = shop ? String(shop.name || "").trim() : "";
@@ -98,8 +103,9 @@ exports.onUserCreatedEmail = onDocumentCreated(
           shopName,
           isTrial: trial,
           trialEndsAt: shop && (shop.trialEndsAt || shop.expiresAt),
+          tempPassword,
         })
-        : templates.welcomeStaff({name, email, shopName, role});
+        : templates.welcomeStaff({name, email, shopName, role, tempPassword});
 
       const sent = await safelySend({
         to: email,
