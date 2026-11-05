@@ -273,3 +273,8 @@ const mailTriggers = require("./mail/triggers");
 exports.onUserCreatedEmail = mailTriggers.onUserCreatedEmail;
 exports.onPharmacyUpdatedEmail = mailTriggers.onPharmacyUpdatedEmail;
 exports.trialEndingReminders = mailTriggers.trialEndingReminders;
+
+const securityAlerts = require("./security/alerts");
+exports.onActivityLogged = securityAlerts.onActivityLogged;
+exports.reportSignInFailure = securityAlerts.reportSignInFailure;
+exports.securityDigest = securityAlerts.securityDigest;

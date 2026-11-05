@@ -185,7 +185,47 @@ function trialEnding({name, email, shopName, trialEndsAt, daysLeft}) {
   };
 }
 
+function securityAlert({title, message, severity, rows}) {
+  const critical = severity === "critical";
+  return {
+    subject: `${critical ? "[URGENT] " : ""}PharmSpecio security alert: ${title}`,
+    text: [
+      title,
+      message,
+      ...(rows || []).filter((row) => row && row.value).map((row) => `${row.label}: ${row.value}`),
+      "Open PharmSpecio as super admin → Security alerts to review.",
+    ].join("\n"),
+    html: layout({
+      title: critical ? `Urgent: ${title}` : title,
+      intro: `${escapeHtml(message)}<br/><br/>Open PharmSpecio as super admin and check <b>Security alerts</b>. If you did not expect this, disable the login involved right away.`,
+      rows,
+    }),
+  };
+}
+
+function securityDigest({alerts, eventCount}) {
+  const rows = alerts.slice(0, 15).map((alert) => ({
+    label: alert.severity === "critical" ? "URGENT" : "Warning",
+    value: `${alert.title}${alert.pharmacyName ? ` — ${alert.pharmacyName}` : ""}`,
+  }));
+  return {
+    subject: `PharmSpecio daily security summary: ${alerts.length} alert(s)`,
+    text: [
+      `Security events in the last 24 hours: ${eventCount}`,
+      `Alerts: ${alerts.length}`,
+      ...rows.map((row) => `${row.label}: ${row.value}`),
+    ].join("\n"),
+    html: layout({
+      title: "Daily security summary",
+      intro: `In the last 24 hours there were <b>${eventCount}</b> security events and <b>${alerts.length}</b> alert(s).`,
+      rows,
+    }),
+  };
+}
+
 module.exports = {
+  securityAlert,
+  securityDigest,
   welcomeAdmin,
   welcomeStaff,
   subscriptionActivated,

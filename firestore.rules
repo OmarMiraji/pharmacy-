@@ -730,6 +730,18 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Written only by Cloud Functions; super admin may only mark alerts as read.
+    match /security_alerts/{alertId} {
+      allow read: if isSuperAdmin();
+      allow update: if isSuperAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt', 'readBy']);
+      allow create, delete: if false;
+    }
+
+    match /alert_counters/{counterId} {
+      allow read, write: if false;
+    }
+
     match /mail_settings/{docId} {
       allow read, write: if isSuperAdmin();
     }

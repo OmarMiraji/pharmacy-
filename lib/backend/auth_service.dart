@@ -106,6 +106,10 @@ class AuthService {
   Future<UserCredential> signIn({required String email, required String password}) async {
     try {
       return await _auth.signInWithEmailAndPassword(email: email, password: password);
+    } on FirebaseAuthException catch (error) {
+      const guesses = {'wrong-password', 'invalid-credential', 'invalid-login-credentials', 'too-many-requests'};
+      if (guesses.contains(error.code)) AuthAccountService().reportSignInFailure(email);
+      rethrow;
     } finally {
       AuthSignals.instance.bump();
     }

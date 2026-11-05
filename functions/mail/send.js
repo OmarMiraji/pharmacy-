@@ -1,5 +1,6 @@
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
+const {writeAlert} = require("../security/store");
 
 // Gmail sender saved by the super admin in the app (mail_settings/smtp, super-admin-only rules);
 // environment variables still win when set.
@@ -88,6 +89,19 @@ async function sendEmail({to, subject, html, text, kind, meta}) {
   });
 
   if (!sent) {
+    if (kind !== "security_alert") {
+      try {
+        await writeAlert({
+          type: "email_failed",
+          severity: "warning",
+          title: "Emails are not being sent",
+          message: `A ${kind || "notice"} email to ${email} failed: ${errorMessage}`.slice(0, 400),
+          dedupeKey: `email_failed_${new Date().toISOString().slice(0, 10)}`,
+        });
+      } catch (error) {
+        console.warn("Could not record email alert", error.message);
+      }
+    }
     throw new Error(errorMessage || "Could not send email.");
   }
 }

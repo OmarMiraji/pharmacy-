@@ -13,7 +13,9 @@ import '../backend/user_profile.dart';
 import '../theme/brand.dart';
 import '../l10n/app_locale.dart';
 import '../widgets/language_toggle.dart';
+import '../backend/security_alert_service.dart';
 import 'activity_log_screen.dart';
+import 'security_alerts_screen.dart';
 import 'announcements_admin_screen.dart';
 import 'login_logs_screen.dart';
 import 'app_update_screen.dart';
@@ -35,6 +37,40 @@ class SuperAdminHome extends StatefulWidget {
 
   @override
   State<SuperAdminHome> createState() => _SuperAdminHomeState();
+}
+
+class _UnreadAlertsBadge extends StatefulWidget {
+  const _UnreadAlertsBadge();
+
+  @override
+  State<_UnreadAlertsBadge> createState() => _UnreadAlertsBadgeState();
+}
+
+class _UnreadAlertsBadgeState extends State<_UnreadAlertsBadge> {
+  late final Stream<List<SecurityAlert>> _unread = SecurityAlertService().watchUnread();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<SecurityAlert>>(
+      stream: _unread,
+      builder: (context, snapshot) {
+        final rows = snapshot.data ?? const <SecurityAlert>[];
+        if (rows.isEmpty) return const SizedBox.shrink();
+        final urgent = rows.any((row) => row.isCritical);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: urgent ? const Color(0xffd92d20) : const Color(0xfff79009),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            rows.length >= 50 ? '50+' : '${rows.length}',
+            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _NavDest {
@@ -75,6 +111,7 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
           _NavDest('payments', S.t('Payments', 'Malipo'), Icons.payments_outlined),
         ]),
         _NavSection('SYSTEM', [
+          _NavDest('alerts', S.t('Security alerts', 'Tahadhari'), Icons.notification_important_outlined),
           _NavDest('support', S.t('Support data', 'Data ya msaada'), Icons.storage_rounded),
           _NavDest('activity', S.t('Security activity', 'Shughuli za usalama'), Icons.policy_outlined),
           _NavDest('audit', S.t('Audit logs', 'Audit'), Icons.receipt_long_rounded),
@@ -151,6 +188,7 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
                                         Expanded(
                                           child: Text(item.label, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
                                         ),
+                                        if (item.id == 'alerts') const _UnreadAlertsBadge(),
                                       ],
                                     ),
                                   ),
@@ -273,6 +311,8 @@ class _SuperAdminHomeState extends State<SuperAdminHome> {
         return const AuditLogsScreen();
       case 'activity':
         return const SingleChildScrollView(child: ActivityLogScreen());
+      case 'alerts':
+        return const SecurityAlertsScreen();
       case 'logins':
         return LoginLogsScreen(excludeActorUid: widget.profile.id, canDelete: true);
       case 'security':

@@ -143,6 +143,18 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "security_alerts",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "alert_counters",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "activity_logs",
       "fieldPath": "expireAt",
       "ttl": true,

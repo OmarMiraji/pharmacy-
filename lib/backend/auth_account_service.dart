@@ -215,6 +215,22 @@ class AuthAccountService {
     return _CallableError(code, message, retryWithIdentity: status >= 500);
   }
 
+  /// Lets the server count wrong passwords so super admin is warned about guessing. Never throws.
+  Future<void> reportSignInFailure(String email) async {
+    final mail = email.trim().toLowerCase();
+    if (!mail.contains('@')) return;
+    try {
+      final projectId = DefaultFirebaseOptions.currentPlatform.projectId;
+      await http
+          .post(
+            Uri.https('$_region-$projectId.cloudfunctions.net', '/reportSignInFailure'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'data': {'email': mail}}),
+          )
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {}
+  }
+
   /// True when Firebase knows this email, false when it does not, null when it will not say.
   Future<bool?> emailHasLogin(String email) async {
     final trimmed = email.trim().toLowerCase();

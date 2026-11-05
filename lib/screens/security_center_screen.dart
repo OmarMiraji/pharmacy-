@@ -43,9 +43,6 @@ class SecurityCenterScreen extends StatelessWidget {
                   spacing: 12,
                   runSpacing: 12,
                   children: [
-                    _pill(S.t('Firebase Auth', 'Firebase Auth'), S.t('Healthy', 'Sawa')),
-                    _pill(S.t('Firestore', 'Firestore'), S.t('Connected', 'Imeunganishwa')),
-                    _pill(S.t('Security rules', 'Sheria'), S.t('Deployed', 'Zimewekwa')),
                     _pill(S.t('Locked shops', 'Maduka yaliyofungwa'), '$locked'),
                     _pill(S.t('Expired licenses', 'Leseni zilizoisha'), '$expired'),
                     _pill(S.t('Pending payments', 'Malipo yanayosubiri'), '$pending'),
