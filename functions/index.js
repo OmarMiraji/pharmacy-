@@ -22,6 +22,14 @@ async function loadCaller(uid) {
 
 const SHOP_STAFF_ROLES = ["pharmacist", "cashier", "storekeeper"];
 
+const PROTECTED_MESSAGE = "A super admin login is protected and cannot be changed from the app.";
+
+async function isSuperAdminUid(uid) {
+  if (!uid) return false;
+  const snap = await admin.firestore().collection("users").doc(uid).get();
+  return snap.exists && String((snap.data() || {}).role || "").trim().toLowerCase() === "super_admin";
+}
+
 // A shop admin may only touch a staff login of their own shop, or a leftover login with no
 // profile that does not own another shop. Throws when the target is off limits.
 async function assertShopAdminMayManage(caller, targetUid, targetEmail) {
@@ -183,6 +191,9 @@ exports.recycleAuthUser = onCall({region: "us-central1"}, async (request) => {
   }
   try {
     const existing = await admin.auth().getUserByEmail(email);
+    if (await isSuperAdminUid(existing.uid)) {
+      throw new HttpsError("permission-denied", PROTECTED_MESSAGE);
+    }
     if (!isSuper) {
       await assertShopAdminMayManage(caller, existing.uid, email);
     }
@@ -219,6 +230,9 @@ exports.deleteAuthUser = onCall({region: "us-central1"}, async (request) => {
   const isSuper = callerIsSuper(caller, request.auth.token);
   if (!isSuper && callerRole !== "admin") {
     throw new HttpsError("permission-denied", "You cannot delete that login.");
+  }
+  if (await isSuperAdminUid(uid)) {
+    throw new HttpsError("permission-denied", PROTECTED_MESSAGE);
   }
   if (!isSuper) {
     let targetEmail = "";

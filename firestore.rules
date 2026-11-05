@@ -262,6 +262,14 @@ service cloud.firestore {
           .hasOnly(['displayName', 'phone', 'updatedAt']);
     }
 
+    // Super admin logins can only be removed or demoted from the Firebase Console.
+    function keepsSuperAdmin() {
+      return roleIn(resource.data) != 'super_admin' || (
+        roleIn(request.resource.data) == 'super_admin'
+        && request.resource.data.get('isActive', true) != false
+      );
+    }
+
     function selfPasswordFlagClear(userId) {
       return request.auth.uid == userId
         && request.resource.data.mustChangePassword == false
@@ -482,14 +490,14 @@ service cloud.firestore {
         && request.resource.data.pharmacyId == tenantId()
         && request.resource.data.role in ['pharmacist', 'cashier', 'storekeeper']
       );
-      allow update: if isSuperAdmin() || selfProfileUpdate(userId) || selfPasswordFlagClear(userId) || shopAdminUpdatesStaff(userId) || (
+      allow update: if (isSuperAdmin() && keepsSuperAdmin()) || selfProfileUpdate(userId) || selfPasswordFlagClear(userId) || shopAdminUpdatesStaff(userId) || (
         request.auth.uid == userId
         && request.resource.data.role == 'admin'
         && request.resource.data.pharmacyId is string
         && ownsPharmacy(request.resource.data.pharmacyId)
         && resource.data.role != 'super_admin'
       );
-      allow delete: if isSuperAdmin() || (
+      allow delete: if (isSuperAdmin() && roleIn(resource.data) != 'super_admin') || (
         hasPermission('users.manage')
         && pharmacyWritable()
         && resource.data.pharmacyId == tenantId()

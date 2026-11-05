@@ -273,16 +273,20 @@ class _ShopCard extends StatelessWidget {
                             onPressed: () => showEditStaffDialog(context, service: users, user: user, canManageSuperAdmin: true),
                             icon: const Icon(Icons.tune_rounded, color: Color(0xff0f766e)),
                           ),
-                          IconButton(
-                            tooltip: S.t('Password', 'Nenosiri'),
-                            onPressed: () => showManagedPasswordDialog(context, user),
-                            icon: const Icon(Icons.password_rounded, color: Color(0xff0f766e)),
-                          ),
-                          IconButton(
-                            tooltip: S.t('Delete', 'Futa'),
-                            onPressed: () => confirmDeleteStaffProfile(context, users, user),
-                            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffb42318)),
-                          ),
+                          if (user.isSuperAdmin)
+                            const ProtectedSuperAdminBadge()
+                          else ...[
+                            IconButton(
+                              tooltip: S.t('Password', 'Nenosiri'),
+                              onPressed: () => showManagedPasswordDialog(context, user),
+                              icon: const Icon(Icons.password_rounded, color: Color(0xff0f766e)),
+                            ),
+                            IconButton(
+                              tooltip: S.t('Delete', 'Futa'),
+                              onPressed: () => confirmDeleteStaffProfile(context, users, user),
+                              icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffb42318)),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -413,26 +417,30 @@ class _UsersPane extends StatelessWidget {
                                     onPressed: () => showEditStaffDialog(context, service: users, user: user, canManageSuperAdmin: true),
                                     icon: const Icon(Icons.tune_rounded, color: Color(0xff0f766e)),
                                   ),
-                                  IconButton(
-                                    tooltip: S.t('Password', 'Nenosiri'),
-                                    onPressed: () => showManagedPasswordDialog(context, user),
-                                    icon: const Icon(Icons.password_rounded, color: Color(0xff0f766e)),
-                                  ),
-                                  IconButton(
-                                    tooltip: user.isActive ? S.t('Disable', 'Funga') : S.t('Enable', 'Fungua'),
-                                    onPressed: () => users.updateAccess(
-                                      userId: user.id,
-                                      role: user.role == 'super_admin' ? 'admin' : user.role,
-                                      permissions: user.permissions,
-                                      isActive: !user.isActive,
+                                  if (user.isSuperAdmin)
+                                    const ProtectedSuperAdminBadge()
+                                  else ...[
+                                    IconButton(
+                                      tooltip: S.t('Password', 'Nenosiri'),
+                                      onPressed: () => showManagedPasswordDialog(context, user),
+                                      icon: const Icon(Icons.password_rounded, color: Color(0xff0f766e)),
                                     ),
-                                    icon: Icon(user.isActive ? Icons.person_off_outlined : Icons.person_outline_rounded, color: PhyimacyBrand.teal),
-                                  ),
-                                  IconButton(
-                                    tooltip: S.t('Delete', 'Futa'),
-                                    onPressed: () => confirmDeleteStaffProfile(context, users, user),
-                                    icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffb42318)),
-                                  ),
+                                    IconButton(
+                                      tooltip: user.isActive ? S.t('Disable', 'Funga') : S.t('Enable', 'Fungua'),
+                                      onPressed: () => users.updateAccess(
+                                        userId: user.id,
+                                        role: user.role,
+                                        permissions: user.permissions,
+                                        isActive: !user.isActive,
+                                      ),
+                                      icon: Icon(user.isActive ? Icons.person_off_outlined : Icons.person_outline_rounded, color: PhyimacyBrand.teal),
+                                    ),
+                                    IconButton(
+                                      tooltip: S.t('Delete', 'Futa'),
+                                      onPressed: () => confirmDeleteStaffProfile(context, users, user),
+                                      icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffb42318)),
+                                    ),
+                                  ],
                                 ],
                               ),
                             );

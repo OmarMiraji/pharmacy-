@@ -50,12 +50,22 @@ class UserManagementService {
     });
   }
 
+  static const protectedSuperAdminMessage =
+      'A super admin login is protected. It cannot be deleted, disabled, or given a lower role.';
+
+  static bool isProtectedRole(Object? role) => '$role'.trim().toLowerCase() == 'super_admin';
+
+  Future<void> _assertNotSuperAdmin(String userId) async {
+    final snap = await _firestore.collection(FirestoreCollections.users).doc(userId.trim()).get();
+    if (isProtectedRole(snap.data()?['role'])) throw StateError(protectedSuperAdminMessage);
+  }
+
   Future<void> updateAccess({
     required String userId,
     required String role,
     required Map<String, bool> permissions,
     required bool isActive,
-  }) {
+  }) async {
     TenantContext.instance.assertWritable();
     if (!AppPermissions.roleDefaults.containsKey(role)) {
       throw ArgumentError.value(role, 'role', 'Unsupported role.');
@@ -64,8 +74,9 @@ class UserManagementService {
     if (!TenantContext.instance.isSuperAdmin && actorId != null && actorId == userId) {
       throw StateError('You cannot change your own access. Ask your administrator.');
     }
+    await _assertNotSuperAdmin(userId);
     final resolved = AppPermissions.resolvedPermissions(role, permissions);
-    return _firestore.collection(FirestoreCollections.users).doc(userId).update({
+    await _firestore.collection(FirestoreCollections.users).doc(userId).update({
       'role': role,
       'permissions': resolved,
       'isActive': isActive,
@@ -108,6 +119,9 @@ class UserManagementService {
     return _firestore.runTransaction((tx) async {
       final snap = await tx.get(ref);
       final existing = snap.data() ?? const <String, dynamic>{};
+      if (isProtectedRole(existing['role']) && (!isProtectedRole(role) || !isActive)) {
+        throw StateError(protectedSuperAdminMessage);
+      }
       final existingShop = (existing['pharmacyId'] as String?)?.trim() ?? '';
       final shopId = tenant.isSuperAdmin
           ? tenantId
@@ -255,6 +269,7 @@ class UserManagementService {
     final id = userId.trim();
     if (id.isEmpty) return;
     final snap = await _firestore.collection(FirestoreCollections.users).doc(id).get();
+    if (isProtectedRole(snap.data()?['role'])) throw StateError(protectedSuperAdminMessage);
     final email = (snap.data()?['email'] as String? ?? '').trim().toLowerCase();
     if (email.isNotEmpty) {
       await AuthAccountService().rememberAuthUid(email: email, uid: id);

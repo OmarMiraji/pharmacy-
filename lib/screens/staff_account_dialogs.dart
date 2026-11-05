@@ -473,12 +473,14 @@ Future<void> showEditStaffDialog(
                             ),
                             const SizedBox(width: 14),
                             Expanded(
-                              child: SwitchListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(S.t('Account active', 'Akaunti hai')),
-                                value: isActive,
-                                onChanged: (value) => setState(() => isActive = value),
-                              ),
+                              child: user.isSuperAdmin
+                                  ? const Align(alignment: Alignment.centerLeft, child: ProtectedSuperAdminBadge())
+                                  : SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(S.t('Account active', 'Akaunti hai')),
+                                      value: isActive,
+                                      onChanged: (value) => setState(() => isActive = value),
+                                    ),
                             ),
                           ]),
                           const SizedBox(height: 16),
@@ -573,7 +575,45 @@ Future<void> showEditStaffDialog(
   }
 }
 
+class ProtectedSuperAdminBadge extends StatelessWidget {
+  const ProtectedSuperAdminBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: S.t(
+        'Super admin is protected: it cannot be deleted, disabled, or demoted from the app.',
+        'Super admin amelindwa: hawezi kufutwa, kufungwa, wala kushushwa cheo kupitia app.',
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xffe7f4f1),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xff0f766e)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.shield_outlined, size: 16, color: Color(0xff0f766e)),
+            const SizedBox(width: 6),
+            Text(
+              S.t('Protected', 'Amelindwa'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xff0f766e)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> confirmDeleteStaffProfile(BuildContext context, UserManagementService service, UserProfile user) async {
+  if (user.isSuperAdmin) {
+    showAppNotice(context, S.t(UserManagementService.protectedSuperAdminMessage,
+        'Super admin amelindwa. Hawezi kufutwa, kufungwa, wala kushushwa cheo.'), kind: AppNoticeKind.error);
+    return;
+  }
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
